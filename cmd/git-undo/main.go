@@ -12,11 +12,14 @@ import (
 func main() {
 	// Parse command-line flags
 	verbose := false
+	fmt.Println("1")
 	for _, arg := range os.Args[1:] {
 		if arg == "-v" || arg == "--verbose" {
 			verbose = true
-			break
 		}
+
+		fmt.Println(arg)
+
 	}
 
 	// Get the repository-specific log file path
