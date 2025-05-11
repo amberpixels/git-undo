@@ -133,8 +133,16 @@ func (a *App) handleHookCommand(hookArg string) error {
 	hooked := strings.TrimSpace(strings.TrimPrefix(hookArg, "--hook"))
 	hooked = strings.TrimSpace(strings.TrimPrefix(hooked, "="))
 
-	if githelpers.IsReadOnlyGitCommand(hooked) {
-		a.logDebugf("hook: skipping %q", hooked)
+	gitCmd := githelpers.ParseGitCommand(hooked)
+	if !gitCmd.Valid {
+		// This should not happen in a success path
+		// because the zsh script should only send non-failed (so valid) git command
+		// but just in case let's re-validate again here
+		a.logDebugf("hook: skipping as invalid git command %q", hooked)
+		return nil
+	}
+	if gitCmd.IsReadOnly {
+		a.logDebugf("hook: skipping as a read-only command: %q", hooked)
 		return nil
 	}
 
