@@ -9,7 +9,7 @@ import (
 	"github.com/amberpixels/git-undo/internal/git-undo/config"
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
-	gitHelpers "github.com/amberpixels/git-undo/internal/git_helpers"
+	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
 // App represents the main application.
@@ -73,7 +73,7 @@ func (a *App) Run(args []string) error {
 	// Get the appropriate undoer
 	u, err := undoer.New(lastCmd)
 	if err != nil {
-		a.logErrorf("Cannot undo git command: %s. Supported commands: commit, add, branch")
+		a.logErrorf("Cannot undo git command: %s. Supported commands: commit, add, branch", lastCmd)
 		return errors.New("unsupported command")
 	}
 
@@ -84,10 +84,10 @@ func (a *App) Run(args []string) error {
 	}
 
 	if a.dryRun {
-		fmt.Printf("Would run: %s\n", undoCmd.Command)
+		a.logDebugf("Would run: %s\n", undoCmd.Command)
 		if len(undoCmd.Warnings) > 0 {
 			for _, warning := range undoCmd.Warnings {
-				fmt.Fprintf(os.Stderr, "%s\n", warning)
+				a.logErrorf("%s", warning)
 			}
 		}
 		return nil
@@ -95,10 +95,10 @@ func (a *App) Run(args []string) error {
 
 	// Execute the undo command
 	if success := undoer.ExecuteUndoCommand(undoCmd); success {
-		fmt.Printf("Successfully undid: %s via %s\n", lastCmd, undoCmd.Command)
+		a.logDebugf("Successfully undid: %s via %s", lastCmd, undoCmd.Command)
 		if len(undoCmd.Warnings) > 0 {
 			for _, warning := range undoCmd.Warnings {
-				fmt.Fprintf(os.Stderr, "%s\n", warning)
+				a.logErrorf("%s", warning)
 			}
 		}
 		return nil
@@ -118,7 +118,7 @@ func (a *App) handleHookCommand(hookArg string) error {
 	hooked := strings.TrimSpace(strings.TrimPrefix(hookArg, "--hook"))
 	hooked = strings.TrimSpace(strings.TrimPrefix(hooked, "="))
 
-	if gitHelpers.IsReadOnlyGitCommand(hooked) {
+	if githelpers.IsReadOnlyGitCommand(hooked) {
 		a.logDebugf("hook: skipping %q", hooked)
 		return nil
 	}

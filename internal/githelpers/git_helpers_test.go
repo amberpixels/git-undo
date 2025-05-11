@@ -1,8 +1,9 @@
-package gitHelpers
+package githelpers_test
 
 import (
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/githelpers"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -348,14 +349,13 @@ func TestIsReadOnlyGitCommand(t *testing.T) {
 	// Run all test cases
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := IsReadOnlyGitCommand(tc.command)
+			result := githelpers.IsReadOnlyGitCommand(tc.command)
 			assert.Equal(t, tc.expected, result, "Command: %s", tc.command)
 		})
 	}
 }
 
-// TestIsReadOnlyGitCommandTable runs table tests specifically focused on
-// different variations of the same command type
+// different variations of the same command type.
 func TestIsReadOnlyGitCommandTable(t *testing.T) {
 	// Test tables for specific command categories
 	t.Run("Standard read-only commands", func(t *testing.T) {
@@ -379,7 +379,7 @@ func TestIsReadOnlyGitCommandTable(t *testing.T) {
 		}
 
 		for _, cmd := range commands {
-			assert.True(t, IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
+			assert.True(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
 		}
 	})
 
@@ -404,12 +404,12 @@ func TestIsReadOnlyGitCommandTable(t *testing.T) {
 		}
 
 		for _, cmd := range commands {
-			assert.False(t, IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
+			assert.False(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
 		}
 	})
 }
 
-// TestRemoteCommandVariations tests specifically the different variations of the git remote command
+// TestRemoteCommandVariations tests specifically the different variations of the git remote command.
 func TestRemoteCommandVariations(t *testing.T) {
 	readOnlyRemoteCommands := []string{
 		"git remote",
@@ -428,15 +428,15 @@ func TestRemoteCommandVariations(t *testing.T) {
 	}
 
 	for _, cmd := range readOnlyRemoteCommands {
-		assert.True(t, IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
+		assert.True(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
 	}
 
 	for _, cmd := range modifyingRemoteCommands {
-		assert.False(t, IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
+		assert.False(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
 	}
 }
 
-// TestBranchCommandVariations tests specifically the different variations of the git branch command
+// TestBranchCommandVariations tests specifically the different variations of the git branch command.
 func TestBranchCommandVariations(t *testing.T) {
 	readOnlyBranchCommands := []string{
 		"git branch",
@@ -462,15 +462,15 @@ func TestBranchCommandVariations(t *testing.T) {
 	}
 
 	for _, cmd := range readOnlyBranchCommands {
-		assert.True(t, IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
+		assert.True(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
 	}
 
 	for _, cmd := range modifyingBranchCommands {
-		assert.False(t, IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
+		assert.False(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
 	}
 }
 
-// TestTagCommandVariations tests specifically the different variations of the git tag command
+// TestTagCommandVariations tests specifically the different variations of the git tag command.
 func TestTagCommandVariations(t *testing.T) {
 	readOnlyTagCommands := []string{
 		"git tag",
@@ -490,15 +490,15 @@ func TestTagCommandVariations(t *testing.T) {
 	}
 
 	for _, cmd := range readOnlyTagCommands {
-		assert.True(t, IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
+		assert.True(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
 	}
 
 	for _, cmd := range modifyingTagCommands {
-		assert.False(t, IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
+		assert.False(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
 	}
 }
 
-// TestConfigCommandVariations tests specifically the different variations of the git config command
+// TestConfigCommandVariations tests specifically the different variations of the git config command.
 func TestConfigCommandVariations(t *testing.T) {
 	readOnlyConfigCommands := []string{
 		"git config --get user.name",
@@ -520,10 +520,10 @@ func TestConfigCommandVariations(t *testing.T) {
 	}
 
 	for _, cmd := range readOnlyConfigCommands {
-		assert.True(t, IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
+		assert.True(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected read-only: %s", cmd)
 	}
 
 	for _, cmd := range modifyingConfigCommands {
-		assert.False(t, IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
+		assert.False(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
 	}
 }

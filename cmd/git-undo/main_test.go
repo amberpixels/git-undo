@@ -10,58 +10,58 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// GitTestSuite provides a test environment for git operations
+// GitTestSuite provides a test environment for git operations.
 type GitTestSuite struct {
 	suite.Suite
 	repoDir string
 }
 
-// SetupSuite creates a temporary directory and initializes a git repository
+// SetupSuite creates a temporary directory and initializes a git repository.
 func (s *GitTestSuite) SetupSuite() {
 	tmp, err := os.MkdirTemp("", "gitundo-test-*")
 	s.Require().NoError(err)
 	s.repoDir = tmp
 
 	// Initialize git repository
-	s.git("init", ".")
-	s.git("commit", "--allow-empty", "-m", "init")
+	_ = s.git("init", ".")
+	_ = s.git("commit", "--allow-empty", "-m", "init")
 }
 
-// TearDownSuite cleans up the temporary directory
+// TearDownSuite cleans up the temporary directory.
 func (s *GitTestSuite) TearDownSuite() {
 	if s.repoDir != "" {
 		os.RemoveAll(s.repoDir)
 	}
 }
 
-// git runs a git command in the test repository and automatically simulates the hook
+// git runs a git command in the test repository and automatically simulates the hook.
 func (s *GitTestSuite) git(args ...string) string {
 	// Run the actual git command
 	output := s.runCmd("git", args...)
 
 	// Simulate the hook by constructing the command string
 	cmdStr := "git " + strings.Join(args, " ")
-	s.gitUndoWithHook(cmdStr)
+	_ = s.gitUndoWithHook(cmdStr)
 
 	return output
 }
 
-// gitUndo runs git-undo with the given arguments
+// gitUndo runs git-undo with the given arguments.
 func (s *GitTestSuite) gitUndo(args ...string) string {
 	return s.runCmd("git-undo", args...)
 }
 
-// gitUndoWithHook runs git-undo with the hook environment variable set
+// gitUndoWithHook runs git-undo with the hook environment variable set.
 func (s *GitTestSuite) gitUndoWithHook(hookCmd string) string {
 	return s.runCmdWithEnv([]string{"GIT_UNDO_INTERNAL_HOOK=1"}, "git-undo", "--hook="+hookCmd)
 }
 
-// runCmd executes a command in the test repository
+// runCmd executes a command in the test repository.
 func (s *GitTestSuite) runCmd(cmd string, args ...string) string {
 	return s.runCmdWithEnv(nil, cmd, args...)
 }
 
-// runCmdWithEnv executes a command with additional environment variables
+// runCmdWithEnv executes a command with additional environment variables.
 func (s *GitTestSuite) runCmdWithEnv(extraEnv []string, cmd string, args ...string) string {
 	c := exec.Command(cmd, args...)
 	c.Dir = s.repoDir
@@ -73,37 +73,37 @@ func (s *GitTestSuite) runCmdWithEnv(extraEnv []string, cmd string, args ...stri
 	return string(out)
 }
 
-// assertBranchExists checks if a branch exists
+// assertBranchExists checks if a branch exists.
 func (s *GitTestSuite) assertBranchExists(branch string) {
 	output := s.runCmd("git", "branch", "--list", branch)
 	s.NotEmpty(output, "Expected branch %s to exist", branch)
 }
 
-// assertBranchNotExists checks if a branch doesn't exist
+// assertBranchNotExists checks if a branch doesn't exist.
 func (s *GitTestSuite) assertBranchNotExists(branch string) {
 	output := s.runCmd("git", "branch", "--list", branch)
 	s.Empty(output, "Expected branch %s to not exist", branch)
 }
 
-// TestGitUndoSuite runs all git-undo related tests
+// TestGitUndoSuite runs all git-undo related tests.
 func TestGitUndoSuite(t *testing.T) {
 	suite.Run(t, new(GitTestSuite))
 }
 
-// TestUndoBranch tests the branch deletion functionality
+// TestUndoBranch tests the branch deletion functionality.
 func (s *GitTestSuite) TestUndoBranch() {
 	// Create a branch - hook is automatically simulated
-	s.git("branch", "feature")
+	_ = s.git("branch", "feature")
 	s.assertBranchExists("feature")
 
 	// Run undo
-	s.gitUndo()
+	_ = s.gitUndo()
 
 	// Verify branch is gone
 	s.assertBranchNotExists("feature")
 }
 
-// TestUndoAdd tests the git add undo functionality
+// TestUndoAdd tests the git add undo functionality.
 func (s *GitTestSuite) TestUndoAdd() {
 	// Create a test file
 	testFile := filepath.Join(s.repoDir, "test.txt")
@@ -111,14 +111,14 @@ func (s *GitTestSuite) TestUndoAdd() {
 	s.Require().NoError(err)
 
 	// Add the file - hook is automatically simulated
-	s.git("add", "test.txt")
+	_ = s.git("add", "test.txt")
 
 	// Verify file is staged
 	status := s.runCmd("git", "status", "--porcelain")
 	s.Contains(status, "A  test.txt", "File should be staged")
 
 	// Run undo
-	s.gitUndo()
+	_ = s.gitUndo()
 
 	// Verify file is unstaged
 	status = s.runCmd("git", "status", "--porcelain")
