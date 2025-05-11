@@ -46,6 +46,12 @@ For verbose mode, which shows more information about what's happening:
 git undo --verbose
 ```
 
+To view the history of git commands that can be undone:
+
+```bash
+git undo --log
+```
+
 ## Examples
 
 1. Undo a commit:

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/config"
@@ -57,6 +58,9 @@ func (a *App) Run(args []string) error {
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--hook") {
 			return a.handleHookCommand(arg)
+		}
+		if arg == "--log" {
+			return a.handleLogCommand()
 		}
 	}
 
@@ -144,5 +148,31 @@ func (a *App) handleHookCommand(hookArg string) error {
 	}
 
 	a.logDebugf("hook: prepended %q", hooked)
+	return nil
+}
+
+// handleLogCommand displays the git-undo command log.
+func (a *App) handleLogCommand() error {
+	logger, err := logging.NewLogger(a.verbose)
+	if err != nil {
+		return fmt.Errorf("logger initialization: %w", err)
+	}
+
+	// Get the log file path
+	logFile := filepath.Join(logger.GetLogDir(), "command-log.txt")
+
+	// Check if log file exists
+	if _, err := os.Stat(logFile); os.IsNotExist(err) {
+		return errors.New("no command log found. Run some git commands first")
+	}
+
+	// Read and display the log file
+	content, err := os.ReadFile(logFile)
+	if err != nil {
+		return fmt.Errorf("failed to read log file: %w", err)
+	}
+
+	// Print the log content
+	fmt.Print(string(content))
 	return nil
 }

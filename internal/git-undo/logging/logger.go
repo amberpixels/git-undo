@@ -129,3 +129,8 @@ func (l *Logger) prependLogEntry(entry string) error {
 
 	return nil
 }
+
+// GetLogDir returns the path to the log directory.
+func (l *Logger) GetLogDir() string {
+	return l.logDir
+}
