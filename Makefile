@@ -20,6 +20,10 @@ build:
 run: build
 	./$(BUILD_DIR)/$(BINARY_NAME)
 
+# Run tests
+test:
+	@go test -v ./...
+
 # Tidy: format and vet the code
 tidy:
 	@go fmt $$(go list ./...)
@@ -46,4 +50,4 @@ uninstall:
 	rm -f $(INSTALL_DIR)/$(BINARY_NAME)
 
 # Phony targets
-.PHONY: all build run tidy lint-install lint install uninstall readme
+.PHONY: all build run test tidy lint-install lint install uninstall readme

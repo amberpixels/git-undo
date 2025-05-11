@@ -20,7 +20,13 @@ func main() {
 
 	application := app.New(verbose, dryRun)
 	if err := application.Run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, redColor+"git-undo ❌: "+grayColor+err.Error()+resetColor)
 		os.Exit(1)
 	}
 }
+
+const (
+	grayColor  = "\033[90m"
+	redColor   = "\033[31m"
+	resetColor = "\033[0m"
+)

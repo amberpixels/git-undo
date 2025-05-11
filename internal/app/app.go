@@ -26,23 +26,31 @@ func New(verbose, dryRun bool) *App {
 	}
 }
 
+// ANSI escape code for gray color.
+const (
+	yellowColor = "\033[33m"
+	grayColor   = "\033[90m"
+	redColor    = "\033[31m"
+	resetColor  = "\033[0m"
+)
+
 // logDebugf writes debug messages to stderr when verbose mode is enabled.
 func (a *App) logDebugf(format string, args ...interface{}) {
 	if !a.verbose {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	fmt.Fprintf(os.Stderr, yellowColor+"git-undo ⚙️: "+grayColor+format+resetColor+"\n", args...)
 }
 
-// logErrorf writes error messages to stderr.
-func (a *App) logErrorf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+// logWarnf writes error messages to stderr.
+func (a *App) logWarnf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, redColor+"git-undo ❌: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // Run executes the main application logic.
 func (a *App) Run(args []string) error {
-	a.logDebugf("git-undo called in verbose mode")
+	a.logDebugf("called in verbose mode")
 
 	// Check if it was called in --hook mode
 	// considered to be called only internally via shell hooks
@@ -68,13 +76,16 @@ func (a *App) Run(args []string) error {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
 
-	a.logDebugf("Last git command: %s", lastCmd)
+	a.logDebugf("Last git command: %s", yellowColor+lastCmd+resetColor)
 
 	// Get the appropriate undoer
 	u, err := undoer.New(lastCmd)
 	if err != nil {
-		a.logErrorf("Cannot undo git command: %s. Supported commands: commit, add, branch", lastCmd)
-		return errors.New("unsupported command")
+		return fmt.Errorf(
+			"unsupported command: %s. Supported commands: %s",
+			redColor+lastCmd+grayColor,
+			yellowColor+"add, commit, branch"+grayColor,
+		)
 	}
 
 	// Get the undo command
@@ -87,7 +98,7 @@ func (a *App) Run(args []string) error {
 		a.logDebugf("Would run: %s\n", undoCmd.Command)
 		if len(undoCmd.Warnings) > 0 {
 			for _, warning := range undoCmd.Warnings {
-				a.logErrorf("%s", warning)
+				a.logWarnf("%s", warning)
 			}
 		}
 		return nil
@@ -98,7 +109,7 @@ func (a *App) Run(args []string) error {
 		a.logDebugf("Successfully undid: %s via %s", lastCmd, undoCmd.Command)
 		if len(undoCmd.Warnings) > 0 {
 			for _, warning := range undoCmd.Warnings {
-				a.logErrorf("%s", warning)
+				a.logWarnf("%s", warning)
 			}
 		}
 		return nil
