@@ -20,7 +20,7 @@ func main() {
 
 	application := app.New(verbose, dryRun)
 	if err := application.Run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }

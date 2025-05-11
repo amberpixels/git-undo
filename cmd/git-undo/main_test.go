@@ -23,8 +23,8 @@ func (s *GitTestSuite) SetupSuite() {
 	s.repoDir = tmp
 
 	// Initialize git repository
-	_ = s.git("init", ".")
-	_ = s.git("commit", "--allow-empty", "-m", "init")
+	s.git("init", ".")
+	s.git("commit", "--allow-empty", "-m", "init")
 }
 
 // TearDownSuite cleans up the temporary directory.
@@ -35,20 +35,19 @@ func (s *GitTestSuite) TearDownSuite() {
 }
 
 // git runs a git command in the test repository and automatically simulates the hook.
-func (s *GitTestSuite) git(args ...string) string {
+func (s *GitTestSuite) git(args ...string) {
 	// Run the actual git command
 	output := s.runCmd("git", args...)
+	_ = output
 
 	// Simulate the hook by constructing the command string
 	cmdStr := "git " + strings.Join(args, " ")
 	_ = s.gitUndoWithHook(cmdStr)
-
-	return output
 }
 
 // gitUndo runs git-undo with the given arguments.
-func (s *GitTestSuite) gitUndo(args ...string) string {
-	return s.runCmd("git-undo", args...)
+func (s *GitTestSuite) gitUndo(args ...string) {
+	_ = s.runCmd("git-undo", args...)
 }
 
 // gitUndoWithHook runs git-undo with the hook environment variable set.
@@ -93,11 +92,11 @@ func TestGitUndoSuite(t *testing.T) {
 // TestUndoBranch tests the branch deletion functionality.
 func (s *GitTestSuite) TestUndoBranch() {
 	// Create a branch - hook is automatically simulated
-	_ = s.git("branch", "feature")
+	s.git("branch", "feature")
 	s.assertBranchExists("feature")
 
 	// Run undo
-	_ = s.gitUndo()
+	s.gitUndo()
 
 	// Verify branch is gone
 	s.assertBranchNotExists("feature")
@@ -111,14 +110,14 @@ func (s *GitTestSuite) TestUndoAdd() {
 	s.Require().NoError(err)
 
 	// Add the file - hook is automatically simulated
-	_ = s.git("add", "test.txt")
+	s.git("add", "test.txt")
 
 	// Verify file is staged
 	status := s.runCmd("git", "status", "--porcelain")
 	s.Contains(status, "A  test.txt", "File should be staged")
 
 	// Run undo
-	_ = s.gitUndo()
+	s.gitUndo()
 
 	// Verify file is unstaged
 	status = s.runCmd("git", "status", "--porcelain")
