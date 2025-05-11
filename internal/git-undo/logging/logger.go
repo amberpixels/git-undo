@@ -13,13 +13,12 @@ import (
 
 // Logger manages git command logging operations.
 type Logger struct {
-	logDir    string
-	logFile   string
-	isVerbose bool
+	logDir  string
+	logFile string
 }
 
 // NewLogger creates a new Logger instance.
-func NewLogger(isVerbose bool) (*Logger, error) {
+func NewLogger() (*Logger, error) {
 	// Find the git directory
 	gitDirOut, err := exec.Command("git", "rev-parse", "--git-dir").Output()
 	if err != nil {
@@ -34,9 +33,8 @@ func NewLogger(isVerbose bool) (*Logger, error) {
 	}
 
 	return &Logger{
-		logDir:    logDir,
-		logFile:   filepath.Join(logDir, "command-log.txt"),
-		isVerbose: isVerbose,
+		logDir:  logDir,
+		logFile: filepath.Join(logDir, "command-log.txt"),
 	}, nil
 }
 
@@ -121,10 +119,6 @@ func (l *Logger) prependLogEntry(entry string) error {
 	// Swap via rename: will remove logFile and make tmpFile our logFile
 	if err := os.Rename(tmpFile, l.logFile); err != nil {
 		return fmt.Errorf("rename tmp log failed: %w", err)
-	}
-
-	if l.isVerbose {
-		fmt.Fprintf(os.Stderr, "Logged command: %s", entry)
 	}
 
 	return nil

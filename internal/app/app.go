@@ -69,7 +69,7 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Create a new logger
-	logger, err := logging.NewLogger(a.verbose)
+	logger, err := logging.NewLogger()
 	if err != nil {
 		return fmt.Errorf("logger initialization: %w", err)
 	}
@@ -138,7 +138,7 @@ func (a *App) handleHookCommand(hookArg string) error {
 		return nil
 	}
 
-	logger, err := logging.NewLogger(a.verbose)
+	logger, err := logging.NewLogger()
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
@@ -153,7 +153,7 @@ func (a *App) handleHookCommand(hookArg string) error {
 
 // handleLogCommand displays the git-undo command log.
 func (a *App) handleLogCommand() error {
-	logger, err := logging.NewLogger(a.verbose)
+	logger, err := logging.NewLogger()
 	if err != nil {
 		return fmt.Errorf("logger initialization: %w", err)
 	}
@@ -173,6 +173,6 @@ func (a *App) handleLogCommand() error {
 	}
 
 	// Print the log content
-	fmt.Print(string(content))
+	fmt.Fprintf(os.Stdout, "%s", string(content))
 	return nil
 }
