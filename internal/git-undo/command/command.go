@@ -9,8 +9,8 @@ import (
 
 // CommandUndoer represents an interface for undoing git commands
 type CommandUndoer interface {
-	// Undo performs the undo operation
-	Undo(verbose bool) bool
+	// GetUndoCommand returns the git command that would undo the operation
+	GetUndoCommand(verbose bool) (string, error)
 }
 
 // CommandDetails represents parsed git command details
@@ -66,4 +66,13 @@ func CheckGitOutput(args ...string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// ExecuteUndoCommand executes the undo command and returns its success status
+func ExecuteUndoCommand(cmd string) bool {
+	args := strings.Fields(cmd)
+	if len(args) < 2 || args[0] != "git" {
+		return false
+	}
+	return ExecCommand(args[1:]...) == nil
 }

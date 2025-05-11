@@ -10,8 +10,8 @@ type AddUndoer struct {
 	args []string
 }
 
-// Undo unstages files that were added
-func (a *AddUndoer) Undo(verbose bool) bool {
+// GetUndoCommand returns the git command that would undo the add operation
+func (a *AddUndoer) GetUndoCommand(verbose bool) (string, error) {
 	// Parse the arguments to handle flags properly
 	// Common flags for git add: --all, -A, --update, -u, etc.
 
@@ -27,9 +27,9 @@ func (a *AddUndoer) Undo(verbose bool) bool {
 	// If --all flag was used or no specific files, unstage everything
 	if hasAllFlag || len(a.args) == 0 {
 		if verbose {
-			fmt.Println("Undoing git add with 'git restore --staged .'")
+			fmt.Println("Will undo git add with 'git restore --staged .'")
 		}
-		return ExecCommand("restore", "--staged", ".") == nil
+		return "git restore --staged .", nil
 	}
 
 	// For other cases, filter out flags and only pass real file paths to restore
@@ -44,15 +44,14 @@ func (a *AddUndoer) Undo(verbose bool) bool {
 	// If we only had flags but no files, default to restoring everything
 	if len(filesToRestore) == 0 {
 		if verbose {
-			fmt.Println("Undoing git add with 'git restore --staged .'")
+			fmt.Println("Will undo git add with 'git restore --staged .'")
 		}
-		return ExecCommand("restore", "--staged", ".") == nil
+		return "git restore --staged .", nil
 	}
 
 	if verbose {
-		fmt.Printf("Undoing git add with 'git restore --staged %s'\n", strings.Join(filesToRestore, " "))
+		fmt.Printf("Will undo git add with 'git restore --staged %s'\n", strings.Join(filesToRestore, " "))
 	}
 
-	args := append([]string{"restore", "--staged"}, filesToRestore...)
-	return ExecCommand(args...) == nil
+	return fmt.Sprintf("git restore --staged %s", strings.Join(filesToRestore, " ")), nil
 }

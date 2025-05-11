@@ -9,11 +9,11 @@ type BranchUndoer struct {
 	branchName string
 }
 
-// Undo deletes a branch that was just created
-func (b *BranchUndoer) Undo(verbose bool) bool {
+// GetUndoCommand returns the git command that would undo the branch creation
+func (b *BranchUndoer) GetUndoCommand(verbose bool) (string, error) {
 	if verbose {
-		fmt.Printf("Undoing branch creation with 'git branch -D %s'\n", b.branchName)
+		fmt.Printf("Will undo branch creation with 'git branch -D %s'\n", b.branchName)
 	}
 
-	return ExecCommand("branch", "-D", b.branchName) == nil
+	return fmt.Sprintf("git branch -D %s", b.branchName), nil
 }

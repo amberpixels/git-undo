@@ -19,9 +19,19 @@ func isVerbose() bool {
 	return false
 }
 
+func isDryRun() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "--dry-run" {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	// Parse command-line flags
 	verbose := isVerbose()
+	dryRun := isDryRun()
 	if verbose {
 		fmt.Fprintf(os.Stderr, "git-undo process called\n")
 	}
@@ -78,8 +88,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Perform the undo operation
-	if success := undoer.Undo(verbose); success {
+	// Get the undo command
+	undoCmd, err := undoer.GetUndoCommand(verbose)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if dryRun {
+		fmt.Printf("Would run: %s\n", undoCmd)
+		os.Exit(0)
+	}
+
+	// Execute the undo command
+	if success := command.ExecuteUndoCommand(undoCmd); success {
 		fmt.Printf("Successfully undid: %s\n", lastCmd)
 	} else {
 		fmt.Fprintf(os.Stderr, "Failed to undo: %s\n", lastCmd)
