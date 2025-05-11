@@ -11,10 +11,20 @@ import (
 // gitStr holds git command string.
 const gitStr = "git"
 
+// UndoCommand represents a command that can undo a git operation.
+type UndoCommand struct {
+	// Command is the actual git command string to execute
+	Command string
+	// Warnings contains any warnings that should be shown to the user
+	Warnings []string
+	// Description is a human-readable description of what the command will do
+	Description string
+}
+
 // Undoer represents an interface for undoing git commands.
 type Undoer interface {
-	// GetUndoCommand returns the git command that would undo the operation
-	GetUndoCommand(verbose bool) (string, error)
+	// GetUndoCommand returns the command that would undo the operation
+	GetUndoCommand() (*UndoCommand, error)
 }
 
 // Details represents parsed git command details.
@@ -73,8 +83,8 @@ func CheckGitOutput(args ...string) (string, error) {
 }
 
 // ExecuteUndoCommand executes the undo command and returns its success status.
-func ExecuteUndoCommand(cmd string) bool {
-	args := strings.Fields(cmd)
+func ExecuteUndoCommand(cmd *UndoCommand) bool {
+	args := strings.Fields(cmd.Command)
 	if len(args) < 2 || args[0] != gitStr {
 		return false
 	}

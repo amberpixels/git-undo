@@ -83,23 +83,33 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Get the undo command
-	undoCmd, err := undoer.GetUndoCommand(a.verbose)
+	undoCmd, err := undoer.GetUndoCommand()
 	if err != nil {
 		return fmt.Errorf("failed to undo: %w", err)
 	}
 
 	if a.dryRun {
-		fmt.Printf("Would run: %s\n", undoCmd)
+		fmt.Printf("Would run: %s\n", undoCmd.Command)
+		if len(undoCmd.Warnings) > 0 {
+			for _, warning := range undoCmd.Warnings {
+				fmt.Fprintf(os.Stderr, "%s\n", warning)
+			}
+		}
 		return nil
 	}
 
 	// Execute the undo command
 	if success := command.ExecuteUndoCommand(undoCmd); success {
-		fmt.Printf("Successfully undid: %s via %s\n", lastCmd, undoCmd)
+		fmt.Printf("Successfully undid: %s via %s\n", lastCmd, undoCmd.Command)
+		if len(undoCmd.Warnings) > 0 {
+			for _, warning := range undoCmd.Warnings {
+				fmt.Fprintf(os.Stderr, "%s\n", warning)
+			}
+		}
 		return nil
 	}
 
-	return fmt.Errorf("failed to execute undo command %s via %s", lastCmd, undoCmd)
+	return fmt.Errorf("failed to execute undo command %s via %s", lastCmd, undoCmd.Command)
 }
 
 func (a *App) handleHookCommand(hookArg string) error {
