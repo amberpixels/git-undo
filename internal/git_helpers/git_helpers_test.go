@@ -334,13 +334,13 @@ func TestIsReadOnlyGitCommand(t *testing.T) {
 
 		// Edge cases
 		{
-			name:     "Command with extra spaces",
-			command:  "git   status   -s",
-			expected: true,
+			name:     "Mixed case command (is not a valid git command)",
+			command:  "git StAtUs",
+			expected: false,
 		},
 		{
-			name:     "Mixed case command (should handle correctly)",
-			command:  "git StAtUs",
+			name:     "Command with extra spaces",
+			command:  "git   status   -s",
 			expected: true,
 		},
 	}

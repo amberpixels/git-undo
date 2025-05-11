@@ -43,7 +43,7 @@ func IsReadOnlyGitCommand(cmd string) bool {
 		// "git remote" or "git remote -v" or "git remote show" are read-only
 		// "git remote add", "git remote remove", etc. are not read-only
 		if len(fields) == 2 || // just "git remote"
-			(len(fields) == 3 && (fields[2] == "-v" || fields[2] == "show" || fields[2] == "get-url")) {
+			(len(fields) >= 3 && (fields[2] == "-v" || fields[2] == "show" || fields[2] == "get-url")) {
 			return true
 		}
 		return false
@@ -53,6 +53,7 @@ func IsReadOnlyGitCommand(cmd string) bool {
 		// "git branch <n>" (create) or "git branch -d/-D" (delete) are not read-only
 		if len(fields) == 2 || // just "git branch"
 			(len(fields) >= 3 && (fields[2] == "-l" || fields[2] == "-a" || fields[2] == "-r" ||
+				fields[2] == "-v" || fields[2] == "-vv" || fields[2] == "--verbose" ||
 				fields[2] == "--list" || fields[2] == "--all" || fields[2] == "--remotes")) {
 			return true
 		}
