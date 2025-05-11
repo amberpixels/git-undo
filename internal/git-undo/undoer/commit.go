@@ -1,4 +1,4 @@
-package command
+package undoer
 
 import (
 	"errors"
@@ -13,13 +13,13 @@ type CommitUndoer struct{}
 // GetUndoCommand returns the command that would undo the commit.
 func (c *CommitUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Check if we're at the initial commit (no parent)
-	isInitialCmd := exec.Command("git", "rev-parse", "HEAD^{commit}")
+	isInitialCmd := exec.Command(gitStr, "rev-parse", "HEAD^{commit}")
 	if err := isInitialCmd.Run(); err != nil {
 		return nil, errors.New("this appears to be the initial commit and cannot be undone this way")
 	}
 
 	// Check if this is a merge commit
-	isMergeCmd := exec.Command("git", "rev-parse", "-q", "--verify", "HEAD^2")
+	isMergeCmd := exec.Command(gitStr, "rev-parse", "-q", "--verify", "HEAD^2")
 	isMerge := isMergeCmd.Run() == nil
 
 	if isMerge {

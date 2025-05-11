@@ -1,4 +1,4 @@
-package command
+package undoer
 
 import (
 	"fmt"

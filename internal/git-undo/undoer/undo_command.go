@@ -1,4 +1,4 @@
-package command
+package undoer
 
 import (
 	"errors"
@@ -27,29 +27,34 @@ type Undoer interface {
 	GetUndoCommand() (*UndoCommand, error)
 }
 
-// Details represents parsed git command details.
-type Details struct {
+// CommandDetails represents parsed git command details.
+type CommandDetails struct {
 	Command    string
 	SubCommand string
 	Args       []string
 }
 
-// Parse parses a git command string into a CommandDetails struct.
-func Parse(cmdStr string) (*Details, error) {
+// parseCommand parses a git command string into a CommandDetails struct.
+func parseCommand(cmdStr string) (*CommandDetails, error) {
 	cmdParts := strings.Fields(cmdStr)
 	if len(cmdParts) < 2 || cmdParts[0] != gitStr {
 		return nil, fmt.Errorf("invalid git command format: %s", cmdStr)
 	}
 
-	return &Details{
+	return &CommandDetails{
 		Command:    cmdStr,
 		SubCommand: cmdParts[1],
 		Args:       cmdParts[2:],
 	}, nil
 }
 
-// GetUndoer returns the appropriate Undoer implementation for a git command.
-func GetUndoer(details *Details) (Undoer, error) {
+// New returns the appropriate Undoer implementation for a git command.
+func New(cmdStr string) (Undoer, error) {
+	details, err := parseCommand(cmdStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse input command: %w", err)
+	}
+
 	switch details.SubCommand {
 	case "commit":
 		return &CommitUndoer{}, nil
