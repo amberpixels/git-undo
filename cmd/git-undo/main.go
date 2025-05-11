@@ -3,23 +3,45 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func main() {
+
 	// Parse command-line flags
-	verbose := false
-	fmt.Println("1")
-	for _, arg := range os.Args[1:] {
-		if arg == "-v" || arg == "--verbose" {
-			verbose = true
+	verbose := isVerbose()
+
+	if len(os.Args[1:]) == 1 && strings.HasPrefix(os.Args[1], "--hook") {
+		val, ok := os.LookupEnv("GIT_UNDO_INTERNAL_HOOK")
+		if !ok || val != "1" {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "Unsuccessfull hook attempt")
+			}
+			// Hook MUST NOT be called by user, but by our zsh script
+			os.Exit(1)
 		}
 
-		fmt.Println(arg)
+		arg := os.Args[1]
 
+		hooked := strings.TrimSpace(strings.TrimPrefix(arg, "--hook"))
+		hooked = strings.TrimSpace(strings.TrimPrefix(hooked, "="))
+
+		if err := logGitCommand(hooked); err != nil {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "hook failed: %s", err)
+			}
+			os.Exit(1)
+		}
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "hook: prepended %q\n", hooked)
+		}
+		os.Exit(0)
 	}
 
 	// Get the repository-specific log file path
@@ -80,6 +102,85 @@ func main() {
 	}
 }
 
+func isVerbose() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "-v" || arg == "--verbose" {
+			return true
+		}
+	}
+	return false
+}
+
+func logGitCommand(strGitCommand string) error {
+	// 1) find the git dir
+	gitDirOut, err := exec.Command("git", "rev-parse", "--git-dir").Output()
+	if err != nil {
+		return fmt.Errorf("failed to find git dir: %w", err)
+	}
+	gitDir := strings.TrimSpace(string(gitDirOut))
+
+	// 2) ensure undo-logs exists
+	logDir := filepath.Join(gitDir, "undo-logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("cannot create log dir: %w", err)
+	}
+
+	// 3) append the timestamped entry
+	logFile := filepath.Join(logDir, "command-log.txt")
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("cannot open log file: %w", err)
+	}
+	defer f.Close()
+
+	entry := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), strGitCommand)
+	if err := prependLogEntry(logFile, entry); err != nil {
+		return fmt.Errorf("can not prepend entry: %w", err)
+	}
+
+	return nil
+}
+
+// prependLogEntry prepends a new line into a logFile
+// it's done as tmpFile=[newLine logFile...] -renaming-> logFile
+func prependLogEntry(logFile, entry string) error {
+	tmpFile := logFile + ".tmp"
+
+	// Create a tmp file
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("cannot create tmp log: %w", err)
+	}
+	defer out.Close()
+
+	// Insert our new entry line
+	if _, err := out.WriteString(entry); err != nil {
+		return fmt.Errorf("write entry failed: %w", err)
+	}
+
+	// Stream original file into the tmp file
+	in, err := os.Open(logFile)
+	switch {
+	case err == nil:
+		defer in.Close()
+		if _, err := io.Copy(out, in); err != nil {
+			return fmt.Errorf("stream old log failed: %w", err)
+		}
+	case errors.Is(err, os.ErrNotExist):
+	// if os.Open failed because file doesn't exist, we just skip it
+	default:
+		return fmt.Errorf("could not open log file: %w", err)
+
+	}
+
+	// Swap via rename: will remove logFile and make tmpFile our logFile
+	if err := os.Rename(tmpFile, logFile); err != nil {
+		return fmt.Errorf("rename tmp log failed: %w", err)
+	}
+
+	return nil
+}
+
 // getGitLogFilePath returns the path to the git command log for the current repository.
 func getGitLogFilePath() (string, error) {
 	// Get the git repository root directory
@@ -127,8 +228,8 @@ func getLastGitCommand(logFilePath string) (string, error) {
 
 	lines := strings.Split(string(content), "\n")
 
-	// Find the last non-empty line that contains a git command
-	for i := len(lines) - 1; i >= 0; i-- {
+	// Find the first non-empty line that contains a git command
+	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
 			continue

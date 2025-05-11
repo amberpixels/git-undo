@@ -12,7 +12,7 @@ log_git_command_to_binary() {
 
   [[ "$raw_cmd" == git\ * ]] || return
 
-  command git-undo --hook="$raw_cmd"
+  GIT_UNDO_INTERNAL_HOOK=1 command git-undo --hook="$raw_cmd"
 }
 
 autoload -U add-zsh-hook

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# 1) Build or download the git-undo binary.
-make build  # or: curl -L …/git-undo > ~/.local/bin/git-undo && chmod +x ~/.local/bin/git-undo
+# 1) Install the git-undo binary
+make install
 
 # 2) Copy the hook into ~/.config/git-undo/
 mkdir -p ~/.config/git-undo
