@@ -298,9 +298,41 @@ func undoCommit(verbose bool) bool {
 }
 
 // undoAdd unstages files that were added.
-func undoAdd(files []string, verbose bool) bool {
-	if len(files) == 0 {
-		// If no specific files, unstage all
+func undoAdd(args []string, verbose bool) bool {
+	// Parse the arguments to handle flags properly
+	// Common flags for git add: --all, -A, --update, -u, etc.
+
+	// Check for special flags that affect what to unstage
+	hasAllFlag := false
+	for _, arg := range args {
+		if arg == "--all" || arg == "-A" || arg == "--no-ignore-removal" {
+			hasAllFlag = true
+			break
+		}
+	}
+
+	// If --all flag was used or no specific files, unstage everything
+	if hasAllFlag || len(args) == 0 {
+		if verbose {
+			fmt.Println("Undoing git add with 'git restore --staged .'")
+		}
+		cmd := exec.Command("git", "restore", "--staged", ".")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run() == nil
+	}
+
+	// For other cases, filter out flags and only pass real file paths to restore
+	var filesToRestore []string
+	for _, arg := range args {
+		// Skip any flags (arguments starting with - or --)
+		if !strings.HasPrefix(arg, "-") {
+			filesToRestore = append(filesToRestore, arg)
+		}
+	}
+
+	// If we only had flags but no files, default to restoring everything
+	if len(filesToRestore) == 0 {
 		if verbose {
 			fmt.Println("Undoing git add with 'git restore --staged .'")
 		}
@@ -311,10 +343,10 @@ func undoAdd(files []string, verbose bool) bool {
 	}
 
 	if verbose {
-		fmt.Printf("Undoing git add with 'git restore --staged %s'\n", strings.Join(files, " "))
+		fmt.Printf("Undoing git add with 'git restore --staged %s'\n", strings.Join(filesToRestore, " "))
 	}
 
-	args := append([]string{"restore", "--staged"}, files...)
+	args = append([]string{"restore", "--staged"}, filesToRestore...)
 	cmd := exec.Command("git", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
