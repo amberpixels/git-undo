@@ -1,73 +1,230 @@
 package githelpers
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"strings"
 
-// readOnlyCommands contains a map of git commands that are always read-only.
-var readOnlyCommands = map[string]bool{
-	"status":      true,
-	"log":         true,
-	"blame":       true,
-	"diff":        true,
-	"show":        true,
-	"ls-files":    true,
-	"ls-remote":   true,
-	"grep":        true,
-	"shortlog":    true,
-	"describe":    true,
-	"rev-parse":   true,
-	"cat-file":    true,
-	"help":        true,
-	"whatchanged": true,
-	"reflog":      true,
-	"name-rev":    true,
+	"github.com/mattn/go-shellwords"
+)
+
+func IsReadOnlyGitCommand(command string) bool {
+	parsed := ParseGitCommand(command)
+	return parsed.Valid && parsed.IsReadOnly
 }
 
-// hasFlag checks if the command arguments contain any of the specified flags.
-func hasFlag(args []string, flags ...string) bool {
-	for _, arg := range args {
-		for _, flag := range flags {
-			if arg == flag || arg == "-"+flag || arg == "--"+flag {
-				return true
+type CommandType int
+
+const (
+	UnknownCommand CommandType = iota
+	Porcelain
+	Plumbing
+)
+
+func (ct CommandType) String() string {
+	switch ct {
+	case Porcelain:
+		return "Porcelain"
+	case Plumbing:
+		return "Plumbing"
+	case UnknownCommand:
+		fallthrough
+	default:
+		return "Unknown"
+	}
+}
+
+// GitCommand represents a parsed "git …" invocation.
+type GitCommand struct {
+	Name          string      // e.g. "branch"
+	Args          []string    // flags and operands
+	Valid         bool        // was Name in our lookup?
+	Type          CommandType // Porcelain, Plumbing, or Unknown
+	IsReadOnly    bool
+	ValidationErr error // any parse / lookup error
+}
+
+// Suggested name for the new field: IsReadOnly
+//
+// The logic below treats some verbs as always-mutating,
+// and others as "conditional" (e.g. branch, checkout) that only
+// mutate when given a target name.
+
+// alwaysMutating are commands that always change state.
+var alwaysMutating = map[string]struct{}{
+	"add":         {},
+	"am":          {},
+	"archive":     {}, // e.g. archive --format=zip
+	"checkout":    {}, // ditto
+	"commit":      {},
+	"fetch":       {}, // writes to .git/FETCH_HEAD
+	"init":        {},
+	"merge":       {},
+	"mv":          {},
+	"pull":        {}, // but what if nothing to pull?
+	"push":        {}, // but what if nothing to push?
+	"rebase":      {},
+	"reset":       {},
+	"revert":      {},
+	"rm":          {},
+	"stash":       {},
+	"submodule":   {}, // e.g. submodule add/update
+	"worktree":    {}, // add/remove
+	"cherry-pick": {},
+	"clone":       {},
+}
+
+// conditionalMutating are commands that only mutate if they
+// have a non-flag argument (e.g. "git branch foo" vs "git branch").
+var conditionalMutating = map[string]struct{}{
+	"branch":   {},
+	"checkout": {},
+	"restore":  {},
+	"switch":   {}, // newer porcelain alias for checkout
+	"tag":      {},
+	"remote":   {},
+	"config":   {},
+}
+
+// porcelainCommands is the list of "user-facing" verbs (main porcelain commands).
+var porcelainCommands = []string{
+	"add", "am", "archive", "bisect", "blame", "branch", "bundle",
+	"checkout", "cherry", "cherry-pick", "citool", "clean", "clone",
+	"commit", "describe", "diff", "fetch", "format-patch", "gc",
+	"grep", "gui", "help", "init", "log", "merge", "mv", "notes",
+	"pull", "push", "rebase", "reflog", "remote", "reset", "revert",
+	"rm", "shortlog", "show", "stash", "status", "submodule", "tag",
+	"worktree", "config",
+}
+
+// plumbingCommands is the list of low-level plumbing verbs.
+var plumbingCommands = []string{
+	"apply-mailbox", "apply-patch", "cat-file", "check-attr", "check-ignore",
+	"check-mailmap", "check-ref-format", "checkout-index", "commit-tree",
+	"diff-files", "diff-index", "diff-tree", "fast-export", "fast-import",
+	"fmt-merge-msg", "for-each-ref", "hash-object", "http-backend",
+	"index-pack", "init-db", "log-tree", "ls-files", "ls-remote", "ls-tree",
+	"merge-base", "merge-index", "merge-tree", "mktag", "mktree",
+	"pack-objects", "pack-redundant", "pack-refs", "patch-id",
+	"prune", "receive-pack", "remote-ext", "replace", "rev-list",
+	"rev-parse", "send-pack", "show-index", "show-ref", "symbolic-ref",
+	"unpack-file", "unpack-objects", "update-index", "update-ref",
+	"verify-commit", "verify-pack", "verify-tag", "write-tree",
+	"name-rev",
+}
+
+// buildLookup builds a map from verb → its CommandType.
+func buildLookup() map[string]CommandType {
+	m := make(map[string]CommandType, len(porcelainCommands)+len(plumbingCommands))
+	for _, cmd := range porcelainCommands {
+		m[cmd] = Porcelain
+	}
+	for _, cmd := range plumbingCommands {
+		m[cmd] = Plumbing
+	}
+	return m
+}
+
+var lookup = buildLookup()
+
+// readOnlyFlags are flags that make a command read-only even if it's in conditionalMutating.
+var readOnlyFlags = map[string]map[string]struct{}{
+	"branch": {
+		"-r":        {},
+		"--remotes": {},
+		"--list":    {},
+		"--all":     {},
+	},
+	"checkout": {
+		"-b": {}, // create and switch to new branch
+	},
+	"tag": {
+		"-l":     {},
+		"--list": {},
+	},
+	"config": {
+		"--get":          {},
+		"--list":         {},
+		"-l":             {}, // short form of --list
+		"--get-all":      {},
+		"--get-regexp":   {},
+		"--get-urlmatch": {},
+	},
+}
+
+// readOnlySubcommands are subcommands that make a command read-only.
+var readOnlySubcommands = map[string]map[string]struct{}{
+	"remote": {
+		"show":    {},
+		"get-url": {},
+		"list":    {},
+	},
+}
+
+// isReadOnlyCommand determines if a git command is read-only based on its name and arguments.
+func isReadOnlyCommand(name string, args []string) bool {
+	// Always mutating commands are never read-only
+	if _, always := alwaysMutating[name]; always {
+		return false
+	}
+
+	// Check if it's a conditional mutating command
+	if _, conditional := conditionalMutating[name]; conditional {
+		// First check if there's a subcommand that makes it read-only
+		if len(args) > 0 {
+			if readOnlySubcmds, hasReadOnlySubcmds := readOnlySubcommands[name]; hasReadOnlySubcmds {
+				if _, isReadOnly := readOnlySubcmds[args[0]]; isReadOnly {
+					return true
+				}
+			}
+		}
+
+		// Check read-only flags
+		if readOnlyFlagsForCmd, hasReadOnlyFlags := readOnlyFlags[name]; hasReadOnlyFlags {
+			for _, arg := range args {
+				if _, isReadOnly := readOnlyFlagsForCmd[arg]; isReadOnly {
+					return true
+				}
+			}
+		}
+
+		// Check for non-flag arguments
+		for _, a := range args {
+			if !strings.HasPrefix(a, "-") {
+				return false
 			}
 		}
 	}
-	return false
+
+	// If we get here, it's either not a mutating command or all arguments are flags
+	return true
 }
 
-// IsReadOnlyGitCommand checks if a git command is read-only and shouldn't be logged.
-func IsReadOnlyGitCommand(cmd string) bool {
-	fields := strings.Fields(cmd)
-	if len(fields) < 2 {
-		return true // Invalid command format, treat as read-only
+func ParseGitCommand(raw string) *GitCommand {
+	w := shellwords.NewParser()
+	parts, err := w.Parse(raw)
+	if err != nil {
+		return &GitCommand{ValidationErr: fmt.Errorf("split error: %w", err)}
+	}
+	if len(parts) < 2 || parts[0] != "git" {
+		return &GitCommand{ValidationErr: errors.New("not a git command")}
 	}
 
-	subCmd := fields[1]
-	args := fields[2:]
+	name := parts[1]
+	args := parts[2:]
+	typ, ok := lookup[name]
 
-	// Check if it's in the always read-only list
-	if readOnlyCommands[subCmd] {
-		return true
+	return &GitCommand{
+		Name:  name,
+		Args:  args,
+		Valid: ok,
+		Type: func() CommandType {
+			if ok {
+				return typ
+			}
+			return UnknownCommand
+		}(),
+		IsReadOnly:    isReadOnlyCommand(name, args),
+		ValidationErr: nil,
 	}
-
-	// Special cases that require argument inspection
-	switch subCmd {
-	case "remote":
-		// "git remote" or "git remote -v" or "git remote show" are read-only
-		return len(args) == 0 || hasFlag(args, "v") || hasFlag(args, "show", "get-url")
-
-	case "branch":
-		// "git branch" with no args or with listing flags is read-only
-		return len(args) == 0 || hasFlag(args, "l", "a", "r", "v", "vv", "verbose", "list", "all", "remotes")
-
-	case "tag":
-		// "git tag" with no args or with listing flags is read-only
-		return len(args) == 0 || hasFlag(args, "l", "list")
-
-	case "config":
-		// "git config" with get/list flags is read-only
-		return hasFlag(args, "get", "list", "l", "get-all", "get-regexp", "get-urlmatch")
-	}
-
-	// All other commands are considered modifying actions
-	return false
 }

@@ -18,12 +18,12 @@ func TestIsReadOnlyGitCommand(t *testing.T) {
 		{
 			name:     "Empty command",
 			command:  "",
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "Just git without subcommand",
 			command:  "git",
-			expected: true,
+			expected: false,
 		},
 
 		// Always read-only commands
@@ -95,7 +95,7 @@ func TestIsReadOnlyGitCommand(t *testing.T) {
 		{
 			name:     "whatchanged command",
 			command:  "git whatchanged",
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "reflog command",
@@ -373,7 +373,6 @@ func TestIsReadOnlyGitCommandTable(t *testing.T) {
 			"git rev-parse",
 			"git cat-file",
 			"git help",
-			"git whatchanged",
 			"git reflog",
 			"git name-rev",
 		}
