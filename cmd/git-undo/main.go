@@ -284,10 +284,59 @@ func getLastGitCommand(logFilePath string) (string, error) {
 	return "", errors.New("no git command found in log")
 }
 
-// undoCommit reverts the last commit.
+// undoCommit reverts the last commit with appropriate handling of edge cases.
 func undoCommit(verbose bool) bool {
+	// Check if we're at the initial commit (no parent)
+	isInitialCmd := exec.Command("git", "rev-parse", "HEAD^{commit}")
+	if err := isInitialCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: This appears to be the initial commit and cannot be undone this way.\n")
+		return false
+	}
+
+	// Check if this is a merge commit
+	isMergeCmd := exec.Command("git", "rev-parse", "-q", "--verify", "HEAD^2")
+	isMerge := isMergeCmd.Run() == nil
+
+	if isMerge {
+		if verbose {
+			fmt.Println("Detected a merge commit. Undoing with 'git reset --merge ORIG_HEAD'")
+		}
+		// For merge commits, use ORIG_HEAD which points to the state before the merge
+		cmd := exec.Command("git", "reset", "--merge", "ORIG_HEAD")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run() == nil
+	}
+
+	// Get the commit message to check if it was an amended commit
+	commitMsgCmd := exec.Command("git", "log", "-1", "--pretty=%B")
+	commitMsg, err := commitMsgCmd.Output()
+	if err == nil && strings.Contains(string(commitMsg), "[amend]") {
+		if verbose {
+			fmt.Println("Detected an amended commit. Using 'git reset --soft HEAD@{1}'")
+		}
+		// For amended commits, use the reflog to go back to the state before the amend
+		cmd := exec.Command("git", "reset", "--soft", "HEAD@{1}")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run() == nil
+	}
+
+	// Check if the commit is tagged
+	tagCmd := exec.Command("git", "tag", "--points-at", "HEAD")
+	tagOutput, err := tagCmd.Output()
+
+	// Standard case: normal commit
+	resetCmd := "git reset --soft HEAD~1"
+	if err == nil && len(tagOutput) > 0 {
+		// If the commit is tagged, show a warning
+		tags := strings.TrimSpace(string(tagOutput))
+		fmt.Printf("Warning: The commit being undone has the following tags: %s\n", tags)
+		fmt.Println("These tags will now point to the parent commit.")
+	}
+
 	if verbose {
-		fmt.Println("Undoing last commit with 'git reset --soft HEAD~1'")
+		fmt.Printf("Undoing last commit with '%s'\n", resetCmd)
 	}
 
 	cmd := exec.Command("git", "reset", "--soft", "HEAD~1")
