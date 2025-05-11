@@ -73,7 +73,7 @@ func (a *App) Run(args []string) error {
 	// Get the appropriate undoer
 	u, err := undoer.New(lastCmd)
 	if err != nil {
-		a.logErrorf("Cannot undo git command: %s. Supported commands: commit, add, branch", cmdDetails.SubCommand)
+		a.logErrorf("Cannot undo git command: %s. Supported commands: commit, add, branch")
 		return errors.New("unsupported command")
 	}
 
