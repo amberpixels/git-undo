@@ -2,8 +2,8 @@ package command
 
 import "strings"
 
-// IsReadOnlyCommand checks if a git command is read-only and shouldn't be logged
-func IsReadOnlyCommand(cmd string) bool {
+// IsReadOnlyGitCommand checks if a git command is read-only and shouldn't be logged.
+func IsReadOnlyGitCommand(cmd string) bool {
 	// Extract the git subcommand and arguments
 	fields := strings.Fields(cmd)
 	if len(fields) < 2 {

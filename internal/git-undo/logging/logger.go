@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,14 +11,14 @@ import (
 	"time"
 )
 
-// Logger manages git command logging operations
+// Logger manages git command logging operations.
 type Logger struct {
 	logDir    string
 	logFile   string
 	isVerbose bool
 }
 
-// NewLogger creates a new Logger instance
+// NewLogger creates a new Logger instance.
 func NewLogger(isVerbose bool) (*Logger, error) {
 	// Find the git directory
 	gitDirOut, err := exec.Command("git", "rev-parse", "--git-dir").Output()
@@ -28,7 +29,7 @@ func NewLogger(isVerbose bool) (*Logger, error) {
 
 	// Create undo-logs directory
 	logDir := filepath.Join(gitDir, "undo-logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0750); err != nil {
 		return nil, fmt.Errorf("cannot create log dir: %w", err)
 	}
 
@@ -39,17 +40,17 @@ func NewLogger(isVerbose bool) (*Logger, error) {
 	}, nil
 }
 
-// LogCommand logs a git command with timestamp
+// LogCommand logs a git command with timestamp.
 func (l *Logger) LogCommand(strGitCommand string) error {
 	entry := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), strGitCommand)
 	return l.prependLogEntry(entry)
 }
 
-// GetLastCommand reads the last git command from the log file
+// GetLastCommand reads the last git command from the log file.
 func (l *Logger) GetLastCommand() (string, error) {
 	// Check if log file exists
 	if _, err := os.Stat(l.logFile); os.IsNotExist(err) {
-		return "", fmt.Errorf("no command log found. Run some git commands first")
+		return "", errors.New("no command log found. Run some git commands first")
 	}
 
 	content, err := os.ReadFile(l.logFile)
@@ -60,7 +61,7 @@ func (l *Logger) GetLastCommand() (string, error) {
 	lines := strings.Split(string(content), "\n")
 
 	// Find the first non-empty line that contains a git command
-	for i := 0; i < len(lines); i++ {
+	for i := range lines {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
 			continue
@@ -84,10 +85,10 @@ func (l *Logger) GetLastCommand() (string, error) {
 		return "git " + parts[1], nil
 	}
 
-	return "", fmt.Errorf("no git command found in log")
+	return "", errors.New("no git command found in log")
 }
 
-// prependLogEntry prepends a new line into the log file
+// prependLogEntry prepends a new line into the log file.
 func (l *Logger) prependLogEntry(entry string) error {
 	tmpFile := l.logFile + ".tmp"
 

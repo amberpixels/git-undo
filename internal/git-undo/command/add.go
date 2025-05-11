@@ -5,12 +5,14 @@ import (
 	"strings"
 )
 
-// AddUndoer handles undoing git add operations
+// AddUndoer handles undoing git add operations.
 type AddUndoer struct {
 	args []string
 }
 
-// GetUndoCommand returns the git command that would undo the add operation
+var _ Undoer = &AddUndoer{}
+
+// GetUndoCommand returns the git command that would undo the add operation.
 func (a *AddUndoer) GetUndoCommand(verbose bool) (string, error) {
 	// Parse the arguments to handle flags properly
 	// Common flags for git add: --all, -A, --update, -u, etc.

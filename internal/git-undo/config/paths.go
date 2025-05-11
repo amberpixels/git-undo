@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,14 +9,14 @@ import (
 	"strings"
 )
 
-// GitPaths holds important git repository paths
+// GitPaths holds important git repository paths.
 type GitPaths struct {
 	RepoRoot string
 	GitDir   string
 	LogDir   string
 }
 
-// GetGitPaths retrieves relevant git repository paths
+// GetGitPaths retrieves relevant git repository paths.
 func GetGitPaths() (*GitPaths, error) {
 	// Get the git repository root directory
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
@@ -46,18 +47,18 @@ func GetGitPaths() (*GitPaths, error) {
 	}, nil
 }
 
-// ValidateGitRepo checks if the current directory is inside a git repository
+// ValidateGitRepo checks if the current directory is inside a git repository.
 func ValidateGitRepo() error {
 	cmd := exec.Command("git", "rev-parse", "--git-dir")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("not in a git repository")
+		return errors.New("not in a git repository")
 	}
 	return nil
 }
 
-// EnsureLogDir ensures the git-undo log directory exists
+// EnsureLogDir ensures the git-undo log directory exists.
 func EnsureLogDir(paths *GitPaths) error {
-	if err := os.MkdirAll(paths.LogDir, 0755); err != nil {
+	if err := os.MkdirAll(paths.LogDir, 0750); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 	return nil
