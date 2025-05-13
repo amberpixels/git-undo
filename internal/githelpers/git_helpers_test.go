@@ -1,6 +1,8 @@
 package githelpers_test
 
 import (
+	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/amberpixels/git-undo/internal/githelpers"
@@ -524,5 +526,95 @@ func TestConfigCommandVariations(t *testing.T) {
 
 	for _, cmd := range modifyingConfigCommands {
 		assert.False(t, githelpers.IsReadOnlyGitCommand(cmd), "Expected modifying: %s", cmd)
+	}
+}
+
+func TestParseGitCommand_Undo(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		want    *githelpers.GitCommand
+		wantErr bool
+	}{
+		{
+			name:    "undo command is valid",
+			command: "git undo",
+			want: &githelpers.GitCommand{
+				Name:       "undo",
+				Args:       []string{},
+				Valid:      true,
+				Type:       githelpers.Custom,
+				IsReadOnly: false,
+			},
+			wantErr: false,
+		},
+		{
+			name:    "undo with --log is read-only",
+			command: "git undo --log",
+			want: &githelpers.GitCommand{
+				Name:       "undo",
+				Args:       []string{"--log"},
+				Valid:      true,
+				Type:       githelpers.Custom,
+				IsReadOnly: true,
+			},
+			wantErr: false,
+		},
+		{
+			name:    "undo with --hook is invalid",
+			command: "git undo --hook",
+			want: &githelpers.GitCommand{
+				Name:          "undo",
+				Args:          []string{"--hook"},
+				Valid:         false,
+				Type:          githelpers.UnknownCommand,
+				IsReadOnly:    false,
+				ValidationErr: errors.New("hook command not allowed"),
+			},
+			wantErr: true,
+		},
+		{
+			name:    "undo with other args is valid and not read-only",
+			command: "git undo --some-arg value",
+			want: &githelpers.GitCommand{
+				Name:       "undo",
+				Args:       []string{"--some-arg", "value"},
+				Valid:      true,
+				Type:       githelpers.Custom,
+				IsReadOnly: false,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := githelpers.ParseGitCommand(tt.command)
+			if tt.wantErr {
+				if got.ValidationErr == nil {
+					t.Errorf("ParseGitCommand() expected error but got none")
+				}
+				return
+			}
+			if got.ValidationErr != nil {
+				t.Errorf("ParseGitCommand() unexpected error: %v", got.ValidationErr)
+				return
+			}
+			if got.Name != tt.want.Name {
+				t.Errorf("ParseGitCommand() Name = %v, want %v", got.Name, tt.want.Name)
+			}
+			if !reflect.DeepEqual(got.Args, tt.want.Args) {
+				t.Errorf("ParseGitCommand() Args = %v, want %v", got.Args, tt.want.Args)
+			}
+			if got.Valid != tt.want.Valid {
+				t.Errorf("ParseGitCommand() Valid = %v, want %v", got.Valid, tt.want.Valid)
+			}
+			if got.Type != tt.want.Type {
+				t.Errorf("ParseGitCommand() Type = %v, want %v", got.Type, tt.want.Type)
+			}
+			if got.IsReadOnly != tt.want.IsReadOnly {
+				t.Errorf("ParseGitCommand() IsReadOnly = %v, want %v", got.IsReadOnly, tt.want.IsReadOnly)
+			}
+		})
 	}
 }

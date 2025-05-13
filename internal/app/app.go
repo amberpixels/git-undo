@@ -110,6 +110,10 @@ func (a *App) Run(args []string) error {
 
 	// Execute the undo command
 	if success := undoer.ExecuteUndoCommand(undoCmd); success {
+		// Mark the command as undoed in the log
+		if err := logger.MarkCommandAsUndoed(); err != nil {
+			a.logWarnf("Failed to mark command as undoed: %v", err)
+		}
 		a.logDebugf("Successfully undid: %s via %s", lastCmd, undoCmd.Command)
 		if len(undoCmd.Warnings) > 0 {
 			for _, warning := range undoCmd.Warnings {

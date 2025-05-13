@@ -46,8 +46,14 @@ func (s *GitTestSuite) git(args ...string) {
 }
 
 // gitUndo runs git-undo with the given arguments.
+//
+//nolint:unparam // for future
 func (s *GitTestSuite) gitUndo(args ...string) {
 	_ = s.runCmd("git-undo", args...)
+}
+
+func (s *GitTestSuite) gitUndoLog() string {
+	return s.runCmd("git-undo", "--log", "| head")
 }
 
 // gitUndoWithHook runs git-undo with the hook environment variable set.
@@ -122,4 +128,65 @@ func (s *GitTestSuite) TestUndoAdd() {
 	// Verify file is unstaged
 	status = s.runCmd("git", "status", "--porcelain")
 	s.Contains(status, "?? test.txt", "File should be unstaged")
+}
+
+// TestSequentialUndo tests multiple undo operations in sequence.
+func (s *GitTestSuite) TestSequentialUndo() {
+	// Create test files
+	file1 := filepath.Join(s.repoDir, "file1.txt")
+	file2 := filepath.Join(s.repoDir, "file2.txt")
+	err := os.WriteFile(file1, []byte("content1"), 0644)
+	s.Require().NoError(err)
+	err = os.WriteFile(file2, []byte("content2"), 0644)
+	s.Require().NoError(err)
+
+	// First sequence: add and commit file1
+	s.git("add", "file1.txt")
+	s.git("commit", "-m", "First commit")
+
+	// Second sequence: add and commit file2
+	s.git("add", "file2.txt")
+	s.git("commit", "-m", "Second commit")
+
+	// Verify both files are committed
+	status := s.runCmd("git", "status", "--porcelain")
+	s.Empty(status, "No files should be modified or staged")
+
+	// First undo: should undo the second commit (keeping file2.txt staged)
+	s.gitUndo()
+	status = s.runCmd("git", "status", "--porcelain")
+	s.Contains(status, "A  file2.txt", "file2.txt should be staged after undoing second commit")
+
+	// Second undo: should unstage file2.txt
+	s.gitUndo()
+	status = s.runCmd("git", "status", "--porcelain")
+	s.Contains(status, "?? file2.txt", "file2.txt should be untracked after undoing add")
+
+	// Third undo: should undo the first commit (keeping file1.txt staged)
+	s.gitUndo()
+	status = s.runCmd("git", "status", "--porcelain")
+	s.Contains(status, "A  file1.txt", "file1.txt should be staged after undoing first commit")
+
+	// Fourth undo: should unstage file1.txt
+	s.gitUndo()
+	status = s.runCmd("git", "status", "--porcelain")
+	s.Contains(status, "?? file1.txt", "file1.txt should be untracked after undoing add")
+}
+
+// TestUndoLog tests that the git-undo log command works and shows output.
+func (s *GitTestSuite) TestUndoLog() {
+	// Create and commit a file
+	testFile := filepath.Join(s.repoDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test content"), 0644)
+	s.Require().NoError(err)
+
+	// Perform some git operations to generate log entries
+	s.git("add", "test.txt")
+	s.git("commit", "-m", "First commit")
+
+	// Check that log command works and shows output
+	log := s.gitUndoLog()
+	s.NotEmpty(log, "Log should not be empty")
+	s.Contains(log, "git commit -m First commit")
+	s.Contains(log, "git add test.txt")
 }

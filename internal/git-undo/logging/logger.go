@@ -40,6 +40,10 @@ func NewLogger() (*Logger, error) {
 
 // LogCommand logs a git command with timestamp.
 func (l *Logger) LogCommand(strGitCommand string) error {
+	// Skip logging git undo commands
+	if strings.HasPrefix(strGitCommand, "git undo") {
+		return nil
+	}
 	entry := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), strGitCommand)
 	return l.prependLogEntry(entry)
 }
@@ -58,10 +62,15 @@ func (l *Logger) GetLastCommand() (string, error) {
 
 	lines := strings.Split(string(content), "\n")
 
-	// Find the first non-empty line that contains a git command
+	// Find the first non-empty line that contains a git command and is not marked as undoed
 	for i := range lines {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
+			continue
+		}
+
+		// Skip lines marked as undoed
+		if strings.HasPrefix(line, "#") {
 			continue
 		}
 
@@ -71,10 +80,6 @@ func (l *Logger) GetLastCommand() (string, error) {
 			continue
 		}
 
-		// Skip "git undo" commands
-		if strings.HasPrefix(parts[1], "undo") {
-			continue
-		}
 		// Skip "git status" commands
 		if strings.HasPrefix(parts[1], "status") {
 			continue
@@ -127,4 +132,42 @@ func (l *Logger) prependLogEntry(entry string) error {
 // GetLogDir returns the path to the log directory.
 func (l *Logger) GetLogDir() string {
 	return l.logDir
+}
+
+// MarkCommandAsUndoed marks a command as undoed by adding a "#" prefix.
+func (l *Logger) MarkCommandAsUndoed() error {
+	// Check if log file exists
+	if _, err := os.Stat(l.logFile); os.IsNotExist(err) {
+		return errors.New("no command log found")
+	}
+
+	content, err := os.ReadFile(l.logFile)
+	if err != nil {
+		return fmt.Errorf("failed to read log file: %w", err)
+	}
+
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 {
+		return errors.New("log file is empty")
+	}
+
+	// Find the first non-empty line that is not already marked as undoed
+	for i := range lines {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+
+		// Skip lines already marked as undoed
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Mark the line as undoed
+		lines[i] = "#" + line
+		break
+	}
+
+	// Write the modified content back to the file
+	return os.WriteFile(l.logFile, []byte(strings.Join(lines, "\n")), 0600)
 }

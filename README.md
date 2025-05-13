@@ -75,9 +75,27 @@ git undo --log
    git undo  # This will delete the new-feature branch
    ```
 
+4. Sequential undo operations:
+
+   ```bash
+   git add file1.txt
+   git commit -m "First commit"
+   git add file2.txt
+   git commit -m "Second commit"
+   git undo  # This will undo the second commit
+   git undo  # This will undo the first commit
+   git undo  # This will unstage file1.txt
+   ```
+
+## Features
+
+- Undo the most recent git command
+- Sequential undo operations (undo multiple commands in reverse order)
+- Command history tracking with visual indicators for undoed commands
+- Support for common git operations (commit, add, branch)
+
 ## Limitations (for now):
 
-- `git-undo` can only undo the most recent git command
 - Some complex operations might not be fully reversible
 
 ## License

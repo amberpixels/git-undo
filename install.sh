@@ -14,5 +14,5 @@ if ! grep -qxF 'source ~/.config/git-undo/git-undo-hook.zsh' ~/.zshrc; then
   echo 'Added `source ~/.config/git-undo/git-undo-hook.zsh` to ~/.zshrc'
 fi
 
-echo "Installed git-undo! Restarting your shell..."
+echo "git-undo: Installed! Restarting your shell..."
 exec $SHELL -l

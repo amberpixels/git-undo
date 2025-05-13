@@ -19,6 +19,7 @@ const (
 	UnknownCommand CommandType = iota
 	Porcelain
 	Plumbing
+	Custom
 )
 
 func (ct CommandType) String() string {
@@ -27,6 +28,8 @@ func (ct CommandType) String() string {
 		return "Porcelain"
 	case Plumbing:
 		return "Plumbing"
+	case Custom:
+		return "Custom"
 	case UnknownCommand:
 		fallthrough
 	default:
@@ -84,6 +87,7 @@ var conditionalMutating = map[string]struct{}{
 	"tag":      {},
 	"remote":   {},
 	"config":   {},
+	"undo":     {},
 }
 
 // porcelainCommands is the list of "user-facing" verbs (main porcelain commands).
@@ -94,7 +98,7 @@ var porcelainCommands = []string{
 	"grep", "gui", "help", "init", "log", "merge", "mv", "notes",
 	"pull", "push", "rebase", "reflog", "remote", "reset", "revert",
 	"rm", "shortlog", "show", "stash", "status", "submodule", "tag",
-	"worktree", "config",
+	"worktree", "config", "undo",
 }
 
 // plumbingCommands is the list of low-level plumbing verbs.
@@ -113,6 +117,11 @@ var plumbingCommands = []string{
 	"name-rev",
 }
 
+// customCommands is the list of custom commands (third-party plugins).
+var customCommands = []string{
+	"undo",
+}
+
 // buildLookup builds a map from verb → its CommandType.
 func buildLookup() map[string]CommandType {
 	m := make(map[string]CommandType, len(porcelainCommands)+len(plumbingCommands))
@@ -121,6 +130,9 @@ func buildLookup() map[string]CommandType {
 	}
 	for _, cmd := range plumbingCommands {
 		m[cmd] = Plumbing
+	}
+	for _, cmd := range customCommands {
+		m[cmd] = Custom
 	}
 	return m
 }
@@ -150,6 +162,9 @@ var readOnlyFlags = map[string]map[string]struct{}{
 		"--get-regexp":   {},
 		"--get-urlmatch": {},
 	},
+	"undo": {
+		"--log": {},
+	},
 }
 
 // readOnlySubcommands are subcommands that make a command read-only.
@@ -159,6 +174,11 @@ var readOnlySubcommands = map[string]map[string]struct{}{
 		"get-url": {},
 		"list":    {},
 	},
+}
+
+// readOnlyRevertedLogic is the list of commands where by default it's mutating but not read-only.
+var readOnlyRevertedLogic = map[string]struct{}{
+	"undo": {},
 }
 
 // isReadOnlyCommand determines if a git command is read-only based on its name and arguments.
@@ -194,6 +214,10 @@ func isReadOnlyCommand(name string, args []string) bool {
 				return false
 			}
 		}
+
+		if _, ok := readOnlyRevertedLogic[name]; ok {
+			return false
+		}
 	}
 
 	// If we get here, it's either not a mutating command or all arguments are flags
@@ -212,6 +236,23 @@ func ParseGitCommand(raw string) *GitCommand {
 
 	name := parts[1]
 	args := parts[2:]
+
+	// Special handling for git undo --hook
+	if name == "undo" {
+		for _, arg := range args {
+			if arg == "--hook" {
+				return &GitCommand{
+					Name:          name,
+					Args:          args,
+					Valid:         false,
+					Type:          Custom,
+					IsReadOnly:    false,
+					ValidationErr: errors.New("hook command not allowed"),
+				}
+			}
+		}
+	}
+
 	typ, ok := lookup[name]
 
 	return &GitCommand{
