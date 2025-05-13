@@ -2,7 +2,7 @@
 set -e
 
 # 1) Install the git-undo binary
-make install
+make binary-install
 
 # 2) Copy the hook into ~/.config/git-undo/
 mkdir -p ~/.config/git-undo

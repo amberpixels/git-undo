@@ -42,12 +42,15 @@ lint: lint-install
 	$(shell which golangci-lint) run
 
 # Install the binary globally with aliases
-install:
+binary-install:
 	@go install $(CMD_DIR)
 
+install:
+	./install.sh
+
 # Uninstall the binary and remove the alias
-uninstall:
+binary-uninstall:
 	rm -f $(INSTALL_DIR)/$(BINARY_NAME)
 
 # Phony targets
-.PHONY: all build run test tidy lint-install lint install uninstall readme
+.PHONY: all build run test tidy lint-install lint binary-install binary-uninstall install

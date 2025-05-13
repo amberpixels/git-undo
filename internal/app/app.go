@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -11,12 +12,14 @@ import (
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/amberpixels/git-undo/internal/githelpers"
+	"github.com/mattn/go-shellwords"
 )
 
 // App represents the main application.
 type App struct {
 	verbose bool
 	dryRun  bool
+	repoDir string
 }
 
 // New creates a new App instance.
@@ -25,6 +28,10 @@ func New(verbose, dryRun bool) *App {
 		verbose: verbose,
 		dryRun:  dryRun,
 	}
+}
+
+func (a *App) SetRepoDir(repoDir string) {
+	a.repoDir = repoDir
 }
 
 // ANSI escape code for gray color.
@@ -53,25 +60,63 @@ func (a *App) logWarnf(format string, args ...interface{}) {
 func (a *App) Run(args []string) error {
 	a.logDebugf("called in verbose mode")
 
-	// Check if it was called in --hook mode
-	// considered to be called only internally via shell hooks
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "--hook") {
-			return a.handleHookCommand(arg)
-		}
-		if arg == "--log" {
-			return a.handleLogCommand()
+	if a.repoDir != "" {
+		// change current directory to a.repoDir
+		if err := os.Chdir(a.repoDir); err != nil {
+			return fmt.Errorf("failed to change directory to %s: %w", a.repoDir, err)
 		}
 	}
 
+	// Ensure we're inside a Git repository
 	if err := config.ValidateGitRepo(); err != nil {
-		return fmt.Errorf("git repo validation: %w", err)
+		return err
+	}
+
+	// Custom commands are --hook and --log
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--hook"):
+			return a.cmdHook(arg)
+		case arg == "--log":
+			return a.cmdLog()
+		}
 	}
 
 	// Create a new logger
 	logger, err := logging.NewLogger()
 	if err != nil {
 		return fmt.Errorf("logger initialization: %w", err)
+	}
+
+	// Check if this is a "git undo undo" command
+	if len(args) > 0 && args[0] == "undo" {
+		// Get the last undoed command
+		lastUndoedCmd, err := logger.GetLastUndoedCommand()
+		if err != nil {
+			return fmt.Errorf("no command to redo: %w", err)
+		}
+
+		// Unmark the command in the log
+		if err := logger.UnmarkLastUndoedCommand(); err != nil {
+			return fmt.Errorf("failed to unmark command: %w", err)
+		}
+
+		// Execute the original command
+		words, err := shellwords.Parse(lastUndoedCmd)
+		if err != nil {
+			return fmt.Errorf("invalid last undo-ed cmd: %w", err)
+		}
+
+		//nolint:gosec // TODO: future should we be safer here? Maybe let's sign our commands?
+		cmd := exec.Command(words[0], words[1:]...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to redo command: %w", err)
+		}
+
+		a.logDebugf("Successfully redid: %s", lastUndoedCmd)
+		return nil
 	}
 
 	// Get the last git command
@@ -126,7 +171,7 @@ func (a *App) Run(args []string) error {
 	return fmt.Errorf("failed to execute undo command %s via %s", lastCmd, undoCmd.Command)
 }
 
-func (a *App) handleHookCommand(hookArg string) error {
+func (a *App) cmdHook(hookArg string) error {
 	a.logDebugf("hook: start")
 
 	val, ok := os.LookupEnv("GIT_UNDO_INTERNAL_HOOK")
@@ -163,8 +208,8 @@ func (a *App) handleHookCommand(hookArg string) error {
 	return nil
 }
 
-// handleLogCommand displays the git-undo command log.
-func (a *App) handleLogCommand() error {
+// cmdLog displays the git-undo command log.
+func (a *App) cmdLog() error {
 	logger, err := logging.NewLogger()
 	if err != nil {
 		return fmt.Errorf("logger initialization: %w", err)
