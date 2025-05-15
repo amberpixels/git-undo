@@ -201,3 +201,41 @@ func (s *GitTestSuite) TestUndoUndo() {
 	status = s.RunCmd("git", "status", "--porcelain")
 	s.Empty(status, "status is empty as everything is commited back (undo undo)")
 }
+
+// TestUndoStash tests the git stash undo functionality.
+func (s *GitTestSuite) TestUndoStash() {
+	// Create a test file
+	testFile := filepath.Join(s.GetRepoDir(), "test.txt")
+	err := os.WriteFile(testFile, []byte("test content"), 0644)
+	s.Require().NoError(err)
+
+	// Add and commit initial state
+	s.Git("add", "test.txt")
+	s.Git("commit", "-m", "Initial commit")
+
+	// Modify the file
+	err = os.WriteFile(testFile, []byte("modified content"), 0644)
+	s.Require().NoError(err)
+
+	// Verify file is modified
+	status := s.RunCmd("git", "status", "--porcelain")
+	s.Contains(status, " M test.txt", "File should be modified")
+
+	// Stash the changes
+	s.Git("stash")
+
+	// Verify working directory is clean
+	status = s.RunCmd("git", "status", "--porcelain")
+	s.Empty(status, "Working directory should be clean after stash")
+
+	// Run undo
+	s.gitUndo()
+
+	// Verify changes are restored
+	status = s.RunCmd("git", "status", "--porcelain")
+	s.Contains(status, " M test.txt", "File should be modified after undo")
+
+	// Verify stash list is empty (stash was dropped)
+	stashList := s.RunCmd("git", "stash", "list")
+	s.Empty(stashList, "Stash list should be empty after undo")
+}

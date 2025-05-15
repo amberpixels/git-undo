@@ -95,6 +95,8 @@ func New(cmdStr string) Undoer {
 		return &BranchUndoer{originalCmd: cmdDetails}
 	case "checkout":
 		return &CheckoutUndoer{originalCmd: cmdDetails}
+	case "stash":
+		return &StashUndoer{originalCmd: cmdDetails}
 	default:
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}

@@ -13,6 +13,7 @@ Currently, `git-undo` can revert the following commands:
 1. **git commit** - Reverts the commit while keeping the changes staged
 2. **git add** - Unstages files that were added
 3. **git branch** - Deletes a newly created branch
+4. **git stash** - Restores stashed changes and removes the stash entry
 
 ## Installation
 
@@ -85,6 +86,14 @@ git undo --log
    git undo  # This will undo the second commit
    git undo  # This will undo the first commit
    git undo  # This will unstage file1.txt
+   ```
+
+5. Undo stashing changes:
+
+   ```bash
+   git add file1.txt
+   git stash  # Stash the staged changes
+   git undo   # This will restore the changes and remove the stash entry
    ```
 
 ## Features
