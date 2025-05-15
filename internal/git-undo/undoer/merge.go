@@ -18,7 +18,10 @@ func (m *MergeUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Check if this was a merge with conflicts
 	output, err := CheckGitOutput("status")
 	if err == nil && strings.Contains(output, "You have unmerged paths") {
-		return nil, fmt.Errorf("%w: cannot undo merge with conflicts", ErrUndoNotSupported)
+		return &UndoCommand{
+			Command:     "git merge --abort",
+			Description: "Abort merge and restore state before merging",
+		}, nil
 	}
 
 	// Check if ORIG_HEAD exists (it should for a merge)
