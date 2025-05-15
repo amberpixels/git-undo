@@ -133,7 +133,7 @@ func (a *App) Run(args []string) error {
 	// Get the undo command
 	undoCmd, err := u.GetUndoCommand()
 	if err != nil {
-		return fmt.Errorf("failed to undo: %w", err)
+		return err
 	}
 
 	if a.dryRun {
