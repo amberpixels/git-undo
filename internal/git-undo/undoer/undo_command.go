@@ -6,7 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/mattn/go-shellwords"
 )
+
+var ErrUndoNotSupported = errors.New("git undo not supported")
 
 // gitStr holds git command string.
 const gitStr = "git"
@@ -29,28 +33,43 @@ type Undoer interface {
 
 // CommandDetails represents parsed git command details.
 type CommandDetails struct {
-	Command    string
-	SubCommand string
-	Args       []string
+	FullCommand string // git commit -m "message"
+
+	Command    string   // git
+	SubCommand string   // commit
+	Args       []string // []string{"-m", "message"}
 }
 
-// parseCommand parses a git command string into a CommandDetails struct.
-func parseCommand(cmdStr string) (*CommandDetails, error) {
-	cmdParts := strings.Fields(cmdStr)
-	if len(cmdParts) < 2 || cmdParts[0] != gitStr {
-		return nil, fmt.Errorf("invalid git command format: %s", cmdStr)
+func (d *CommandDetails) getFirstNonFlagArg() string {
+	for _, arg := range d.Args {
+		if !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+	}
+	return ""
+}
+
+// parseGitCommand parses a git command string into a CommandDetails struct.
+func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
+	parts, err := shellwords.Parse(gitCmdStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse input command: %w", err)
+	}
+	if len(parts) < 2 || parts[0] != gitStr {
+		return nil, fmt.Errorf("invalid git command format: %s", gitCmdStr)
 	}
 
 	return &CommandDetails{
-		Command:    cmdStr,
-		SubCommand: cmdParts[1],
-		Args:       cmdParts[2:],
+		FullCommand: gitCmdStr,
+		Command:     parts[0],
+		SubCommand:  parts[1],
+		Args:        parts[2:],
 	}, nil
 }
 
 // New returns the appropriate Undoer implementation for a git command.
 func New(cmdStr string) (Undoer, error) {
-	details, err := parseCommand(cmdStr)
+	details, err := parseGitCommand(cmdStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse input command: %w", err)
 	}
@@ -61,18 +80,31 @@ func New(cmdStr string) (Undoer, error) {
 	case "add":
 		return &AddUndoer{args: details.Args}, nil
 	case "branch":
-		if len(details.Args) >= 1 {
-			return &BranchUndoer{branchName: details.Args[0]}, nil
+		// Check if this was a branch deletion operation
+		for _, arg := range details.Args {
+			if arg == "-d" || arg == "-D" || arg == "--delete" {
+				return nil, fmt.Errorf("%w for branch deletion", ErrUndoNotSupported)
+			}
 		}
-		return nil, errors.New("branch command requires a branch name")
+
+		return &BranchUndoer{branchName: details.getFirstNonFlagArg()}, nil
+	case "checkout":
+		// Handle checkout -b as branch creation
+		for i, arg := range details.Args {
+			if (arg == "-b" || arg == "--branch") && i+1 < len(details.Args) {
+				return &BranchUndoer{branchName: details.getFirstNonFlagArg()}, nil
+			}
+		}
+
+		return nil, fmt.Errorf("%w for checkout: only -b/--branch is supported", ErrUndoNotSupported)
 	default:
-		return nil, fmt.Errorf("unsupported git command: %s", details.SubCommand)
+		return nil, fmt.Errorf("%w for %s", ErrUndoNotSupported, details.SubCommand)
 	}
 }
 
-// ExecCommand executes a git command and returns its error status.
-func ExecCommand(args ...string) error {
-	cmd := exec.Command(gitStr, args...)
+// ExecGitCommand executes a git command and returns its error status.
+func ExecGitCommand(subCmd string, args ...string) error {
+	cmd := exec.Command(gitStr, append([]string{subCmd}, args...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -89,9 +121,10 @@ func CheckGitOutput(args ...string) (string, error) {
 
 // ExecuteUndoCommand executes the undo command and returns its success status.
 func ExecuteUndoCommand(cmd *UndoCommand) bool {
-	args := strings.Fields(cmd.Command)
-	if len(args) < 2 || args[0] != gitStr {
+	gitCmd, err := parseGitCommand(cmd.Command)
+	if err != nil {
 		return false
 	}
-	return ExecCommand(args[1:]...) == nil
+
+	return ExecGitCommand(gitCmd.SubCommand, gitCmd.Args...) == nil
 }
