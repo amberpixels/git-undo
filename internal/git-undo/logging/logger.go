@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -35,13 +36,46 @@ func NewLogger() (*Logger, error) {
 	}, nil
 }
 
+// getCurrentRef returns the current branch name, tag, or commit hash.
+func (l *Logger) getCurrentRef() (string, error) {
+	// Try to get branch name first
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	output, err := cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(output)), nil
+	}
+
+	// If not on a branch, try to get tag name
+	cmd = exec.Command("git", "describe", "--tags", "--exact-match")
+	output, err = cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(output)), nil
+	}
+
+	// If not on a tag, get commit hash
+	cmd = exec.Command("git", "rev-parse", "--short", "HEAD")
+	output, err = cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current ref: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // LogCommand logs a git command with timestamp.
 func (l *Logger) LogCommand(strGitCommand string) error {
 	// Skip logging git undo commands
 	if strings.HasPrefix(strGitCommand, "git undo") {
 		return nil
 	}
-	entry := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), strGitCommand)
+
+	// Get current ref (branch/tag/commit)
+	ref, err := l.getCurrentRef()
+	if err != nil {
+		// If we can't get the ref, just use "unknown"
+		ref = "unknown"
+	}
+
+	entry := fmt.Sprintf("%s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), ref, strGitCommand)
 	return l.prependLogEntry(entry)
 }
 
@@ -66,7 +100,7 @@ func (l *Logger) GetLastCommand() (string, error) {
 			continue
 		}
 
-		// Extract command part (after timestamp)
+		// Extract command part (after timestamp and ref)
 		parts := strings.SplitN(line, " git ", 2)
 		if len(parts) < 2 {
 			continue

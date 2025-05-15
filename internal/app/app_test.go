@@ -102,7 +102,7 @@ func (s *GitTestSuite) TestUndoAdd() {
 	s.Require().NoError(err)
 
 	// Add the file - hook is automatically simulated
-	s.Git("add", "test.txt")
+	s.Git("add", filepath.Base(testFile))
 
 	// Verify file is staged
 	status := s.RunCmd("git", "status", "--porcelain")
@@ -127,11 +127,11 @@ func (s *GitTestSuite) TestSequentialUndo() {
 	s.Require().NoError(err)
 
 	// First sequence: add and commit file1
-	s.Git("add", "file1.txt")
+	s.Git("add", filepath.Base(file1))
 	s.Git("commit", "-m", "First commit")
 
 	// Second sequence: add and commit file2
-	s.Git("add", "file2.txt")
+	s.Git("add", filepath.Base(file2))
 	s.Git("commit", "-m", "Second commit")
 
 	// Verify both files are committed
@@ -166,15 +166,26 @@ func (s *GitTestSuite) TestUndoLog() {
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
 	s.Require().NoError(err)
 
+	// Create and switch to a new branch
+	s.Git("checkout", "-b", "feature-branch")
+
 	// Perform some git operations to generate log entries
-	s.Git("add", "test.txt")
+	s.Git("add", filepath.Base(testFile)) // Use relative path for git commands
 	s.Git("commit", "-m", "'First commit'")
 
 	// Check that log command works and shows output
 	log := s.gitUndoLog()
 	s.NotEmpty(log, "Log should not be empty")
-	s.Contains(log, "git commit -m 'First commit'")
-	s.Contains(log, "git add test.txt")
+	s.Contains(log, "git commit -m 'First commit'", "Log should contain commit command")
+	s.Contains(log, "git add test.txt", "Log should contain add command")
+	s.Contains(log, "[feature-branch]", "Log should contain branch name")
+
+	// Switch back to main and verify the branch name changes in the log
+	s.Git("checkout", "main")
+	s.Git("add", filepath.Base(testFile)) // Use relative path for git commands
+
+	log = s.gitUndoLog()
+	s.Contains(log, "[main]", "Log should contain updated branch name")
 }
 
 // TestUndoUndo tests the git undo undo (redo) functionality.
@@ -185,7 +196,7 @@ func (s *GitTestSuite) TestUndoUndo() {
 	s.Require().NoError(err)
 
 	// Add and commit the file
-	s.Git("add", "test.txt")
+	s.Git("add", filepath.Base(testFile))
 	s.Git("commit", "-m", "'First commit'")
 
 	status := s.RunCmd("git", "status", "--porcelain")
@@ -210,7 +221,7 @@ func (s *GitTestSuite) TestUndoStash() {
 	s.Require().NoError(err)
 
 	// Add and commit initial state
-	s.Git("add", "test.txt")
+	s.Git("add", filepath.Base(testFile))
 	s.Git("commit", "-m", "Initial commit")
 
 	// Modify the file
@@ -251,7 +262,7 @@ func (s *GitTestSuite) TestUndoMerge() {
 	s.Require().NoError(err)
 
 	// Add and commit the file in feature branch
-	s.Git("add", "feature.txt")
+	s.Git("add", filepath.Base(testFile))
 	s.Git("commit", "-m", "Feature commit")
 
 	// Switch back to main and create a different commit
@@ -259,7 +270,7 @@ func (s *GitTestSuite) TestUndoMerge() {
 	mainFile := filepath.Join(s.GetRepoDir(), "main.txt")
 	err = os.WriteFile(mainFile, []byte("main content"), 0644)
 	s.Require().NoError(err)
-	s.Git("add", "main.txt")
+	s.Git("add", filepath.Base(mainFile))
 	s.Git("commit", "-m", "Main commit")
 
 	// Merge feature into main
