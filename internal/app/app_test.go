@@ -239,3 +239,44 @@ func (s *GitTestSuite) TestUndoStash() {
 	stashList := s.RunCmd("git", "stash", "list")
 	s.Empty(stashList, "Stash list should be empty after undo")
 }
+
+// TestUndoMerge tests the git merge undo functionality.
+func (s *GitTestSuite) TestUndoMerge() {
+	// Create and switch to a new branch
+	s.Git("checkout", "-b", "feature")
+
+	// Create a test file in feature branch
+	testFile := filepath.Join(s.GetRepoDir(), "feature.txt")
+	err := os.WriteFile(testFile, []byte("feature content"), 0644)
+	s.Require().NoError(err)
+
+	// Add and commit the file in feature branch
+	s.Git("add", "feature.txt")
+	s.Git("commit", "-m", "Feature commit")
+
+	// Switch back to main and create a different commit
+	s.Git("checkout", "main")
+	mainFile := filepath.Join(s.GetRepoDir(), "main.txt")
+	err = os.WriteFile(mainFile, []byte("main content"), 0644)
+	s.Require().NoError(err)
+	s.Git("add", "main.txt")
+	s.Git("commit", "-m", "Main commit")
+
+	// Merge feature into main
+	s.Git("merge", "feature")
+
+	// Verify both files exist
+	_, err = os.Stat(testFile)
+	s.NoError(err, "Feature file should exist after merge")
+	_, err = os.Stat(mainFile)
+	s.NoError(err, "Main file should exist after merge")
+
+	// Run undo
+	s.gitUndo()
+
+	// Verify feature file no longer exists in working directory
+	_, err = os.Stat(testFile)
+	s.Error(err, "Feature file should not exist after undoing merge")
+	_, err = os.Stat(mainFile)
+	s.NoError(err, "Main file should still exist after undoing merge")
+}

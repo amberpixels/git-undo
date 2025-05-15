@@ -97,6 +97,8 @@ func New(cmdStr string) Undoer {
 		return &CheckoutUndoer{originalCmd: cmdDetails}
 	case "stash":
 		return &StashUndoer{originalCmd: cmdDetails}
+	case "merge":
+		return &MergeUndoer{originalCmd: cmdDetails}
 	default:
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}

@@ -103,7 +103,7 @@ git undo --log
 - Command history tracking with visual indicators for undoed commands
 - Support for common git operations (commit, add, branch)
 
-## Limitations (for now):
+## Limitations _for now:_
 
 - Some complex operations might not be fully reversible
 
