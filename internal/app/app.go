@@ -128,14 +128,7 @@ func (a *App) Run(args []string) error {
 	a.logDebugf("Last git command: %s", yellowColor+lastCmd+resetColor)
 
 	// Get the appropriate undoer
-	u, err := undoer.New(lastCmd)
-	if err != nil {
-		return fmt.Errorf(
-			"unsupported command: %s. Supported commands: %s",
-			redColor+lastCmd+grayColor,
-			yellowColor+"add, commit, branch"+grayColor,
-		)
-	}
+	u := undoer.New(lastCmd)
 
 	// Get the undo command
 	undoCmd, err := u.GetUndoCommand()

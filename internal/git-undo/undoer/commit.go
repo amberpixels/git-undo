@@ -8,7 +8,9 @@ import (
 )
 
 // CommitUndoer handles undoing git commit operations.
-type CommitUndoer struct{}
+type CommitUndoer struct {
+	originalCmd *CommandDetails
+}
 
 // GetUndoCommand returns the command that would undo the commit.
 func (c *CommitUndoer) GetUndoCommand() (*UndoCommand, error) {

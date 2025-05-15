@@ -7,7 +7,7 @@ import (
 
 // AddUndoer handles undoing git add operations.
 type AddUndoer struct {
-	args []string
+	originalCmd *CommandDetails
 }
 
 var _ Undoer = &AddUndoer{}
@@ -19,7 +19,7 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Check for special flags that affect what to unstage
 	hasAllFlag := false
-	for _, arg := range a.args {
+	for _, arg := range a.originalCmd.Args {
 		if arg == "--all" || arg == "-A" || arg == "--no-ignore-removal" {
 			hasAllFlag = true
 			break
@@ -27,7 +27,7 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 	}
 
 	// If --all flag was used or no specific files, unstage everything
-	if hasAllFlag || len(a.args) == 0 {
+	if hasAllFlag || len(a.originalCmd.Args) == 0 {
 		return &UndoCommand{
 			Command:     "git restore --staged .",
 			Description: "Unstage all files",
@@ -36,7 +36,7 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// For other cases, filter out flags and only pass real file paths to restore
 	var filesToRestore []string
-	for _, arg := range a.args {
+	for _, arg := range a.originalCmd.Args {
 		// Skip any flags (arguments starting with - or --)
 		if !strings.HasPrefix(arg, "-") {
 			filesToRestore = append(filesToRestore, arg)

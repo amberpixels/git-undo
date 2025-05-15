@@ -33,11 +33,10 @@ type Undoer interface {
 
 // CommandDetails represents parsed git command details.
 type CommandDetails struct {
-	FullCommand string // git commit -m "message"
-
-	Command    string   // git
-	SubCommand string   // commit
-	Args       []string // []string{"-m", "message"}
+	FullCommand string   // git commit -m "message"
+	Command     string   // git
+	SubCommand  string   // commit
+	Args        []string // []string{"-m", "message"}
 }
 
 func (d *CommandDetails) getFirstNonFlagArg() string {
@@ -53,7 +52,7 @@ func (d *CommandDetails) getFirstNonFlagArg() string {
 func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
 	parts, err := shellwords.Parse(gitCmdStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse input command: %w", err)
+		return nil, fmt.Errorf("failed to parse input git command: %w", err)
 	}
 	if len(parts) < 2 || parts[0] != gitStr {
 		return nil, fmt.Errorf("invalid git command format: %s", gitCmdStr)
@@ -67,38 +66,37 @@ func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
 	}, nil
 }
 
+// InvalidUndoer represents an undoer for commands that cannot be parsed or are not supported
+type InvalidUndoer struct {
+	rawCommand string
+	parseError error
+}
+
+func (i *InvalidUndoer) GetUndoCommand() (*UndoCommand, error) {
+	if i.parseError != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUndoNotSupported, i.parseError)
+	}
+	return nil, fmt.Errorf("%w: %s", ErrUndoNotSupported, i.rawCommand)
+}
+
 // New returns the appropriate Undoer implementation for a git command.
-func New(cmdStr string) (Undoer, error) {
-	details, err := parseGitCommand(cmdStr)
+func New(cmdStr string) Undoer {
+	cmdDetails, err := parseGitCommand(cmdStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse input command: %w", err)
+		return &InvalidUndoer{rawCommand: cmdStr, parseError: err}
 	}
 
-	switch details.SubCommand {
+	switch cmdDetails.SubCommand {
 	case "commit":
-		return &CommitUndoer{}, nil
+		return &CommitUndoer{originalCmd: cmdDetails}
 	case "add":
-		return &AddUndoer{args: details.Args}, nil
+		return &AddUndoer{originalCmd: cmdDetails}
 	case "branch":
-		// Check if this was a branch deletion operation
-		for _, arg := range details.Args {
-			if arg == "-d" || arg == "-D" || arg == "--delete" {
-				return nil, fmt.Errorf("%w for branch deletion", ErrUndoNotSupported)
-			}
-		}
-
-		return &BranchUndoer{branchName: details.getFirstNonFlagArg()}, nil
+		return &BranchUndoer{originalCmd: cmdDetails}
 	case "checkout":
-		// Handle checkout -b as branch creation
-		for i, arg := range details.Args {
-			if (arg == "-b" || arg == "--branch") && i+1 < len(details.Args) {
-				return &BranchUndoer{branchName: details.getFirstNonFlagArg()}, nil
-			}
-		}
-
-		return nil, fmt.Errorf("%w for checkout: only -b/--branch is supported", ErrUndoNotSupported)
+		return &CheckoutUndoer{originalCmd: cmdDetails}
 	default:
-		return nil, fmt.Errorf("%w for %s", ErrUndoNotSupported, details.SubCommand)
+		return &InvalidUndoer{rawCommand: cmdStr}
 	}
 }
 
