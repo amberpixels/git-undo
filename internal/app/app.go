@@ -90,7 +90,7 @@ func (a *App) Run(args []string) error {
 
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
-		// Get the last undoed entry
+		// Get the last undoed entry (from current reference)
 		lastUndoedEntry, err := logger.GetEntry(logging.UndoedEntry)
 		if err != nil {
 			return fmt.Errorf("no command to redo: %w", err)
@@ -128,6 +128,7 @@ func (a *App) Run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
+	a.logDebugf("Looking for commands from current reference: [%s]", lastEntry.Ref)
 
 	a.logDebugf("Last git command: %s", yellowColor+lastEntry.Command+resetColor)
 

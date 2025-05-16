@@ -21,8 +21,10 @@ type Logger struct {
 
 // Entry represents a logged git command with its full identifier
 type Entry struct {
-	Command    string // just the command part
-	Identifier string // full line including timestamp and ref
+	Command    string    // just the command part
+	Identifier string    // full line including timestamp and ref
+	Timestamp  time.Time // parsed timestamp of the entry
+	Ref        string    // reference (branch/tag/commit) where the command was executed
 }
 
 // EntryType specifies whether to look for regular or undoed entries
@@ -66,7 +68,12 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 		ref = "unknown"
 	}
 
-	entry := fmt.Sprintf("%s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), ref, strGitCommand)
+	// Format the log entry with the current timestamp
+	entry := fmt.Sprintf("%s [%s] %s\n",
+		time.Now().Format("2006-01-02 15:04:05"),
+		ref,
+		strGitCommand,
+	)
 	return l.prependLogEntry(entry)
 }
 
@@ -127,8 +134,72 @@ func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 	return wasMarked, nil
 }
 
+// parseLogLine parses a log line into an Entry.
+// Format: "2025-05-16 10:37:59 [main] git commit ..."
+func parseLogLine(line string, isUndoed bool) (*Entry, error) {
+	// If the line is marked as undoed, remove the # prefix
+	if isUndoed {
+		line = line[1:]
+	}
+
+	// First split by "[" to get the timestamp part
+	parts := strings.SplitN(line, "[", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid log line format: %s", line)
+	}
+
+	// Parse timestamp
+	timestamp, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(parts[0]))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse timestamp: %w", err)
+	}
+
+	// Split the rest by "]" to get the reference
+	refParts := strings.SplitN(parts[1], "]", 2)
+	if len(refParts) != 2 {
+		return nil, fmt.Errorf("invalid log line format: %s", line)
+	}
+	ref := strings.TrimSpace(refParts[0])
+
+	// Extract command part (after timestamp and ref)
+	cmdParts := strings.SplitN(refParts[1], " git ", 2)
+	if len(cmdParts) != 2 {
+		return nil, fmt.Errorf("invalid log line format: %s", line)
+	}
+
+	return &Entry{
+		Command:    "git " + cmdParts[1],
+		Identifier: line,
+		Timestamp:  timestamp,
+		Ref:        ref,
+	}, nil
+}
+
 // GetEntry returns either the last regular entry or the last undoed entry based on the entryType.
-func (l *Logger) GetEntry(entryType EntryType) (*Entry, error) {
+// If a reference is provided in refArg, only entries from that specific reference are considered.
+// If no reference is provided, uses the current reference (branch/tag/commit).
+// Use "any" as refArg to match any reference.
+func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error) {
+	// Determine which reference to use
+	var ref string
+	switch len(refArg) {
+	case 0:
+		// No ref provided, use current ref
+		currentRef, err := l.getCurrentRef()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current ref: %w", err)
+		}
+		ref = currentRef
+	case 1:
+		if refArg[0] == "any" {
+			ref = "" // Empty ref means match any
+		} else {
+			ref = refArg[0]
+		}
+	default:
+		return nil, errors.New("too many reference arguments provided")
+	}
+
 	content, err := l.readLogFile()
 	if err != nil {
 		return nil, err
@@ -151,31 +222,34 @@ func (l *Logger) GetEntry(entryType EntryType) (*Entry, error) {
 			continue
 		}
 
-		// For undoed entries, we need to remove the # prefix
-		if isUndoed {
-			line = line[1:]
+		// Parse the log line into an Entry
+		entry, err := parseLogLine(line, isUndoed)
+		if err != nil {
+			continue // Skip malformed lines
 		}
 
-		// Extract command part (after timestamp and ref)
-		parts := strings.SplitN(line, " git ", 2)
-		if len(parts) < 2 {
-			continue
+		// Check reference if specified
+		if ref != "" && entry.Ref != ref {
+			continue // Skip entries from different references
 		}
 
-		return &Entry{
-			Command:    "git " + parts[1],
-			Identifier: line,
-		}, nil
+		return entry, nil
 	}
 
+	var typeStr string
 	switch entryType {
 	case RegularEntry:
-		return nil, errors.New("no git command found in log")
+		typeStr = "regular"
 	case UndoedEntry:
-		return nil, errors.New("no undoed command found in log")
+		typeStr = "undoed"
 	default:
 		return nil, errors.New("invalid entry type")
 	}
+
+	if ref != "" {
+		return nil, fmt.Errorf("no %s command found in log for reference [%s]", typeStr, ref)
+	}
+	return nil, fmt.Errorf("no %s command found in log", typeStr)
 }
 
 // getCurrentRef returns the current branch name, tag, or commit hash.
