@@ -289,6 +289,7 @@ func (l *Logger) prependLogEntry(entry string) error {
 	if err != nil {
 		return fmt.Errorf("cannot create temporary log file: %w", err)
 	}
+	// aa
 	defer out.Close()
 
 	// Insert our new entry line
