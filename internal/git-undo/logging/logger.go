@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/config"
+	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
 // GitRefReader provides methods for reading git references
@@ -22,35 +22,16 @@ type GitRefReader interface {
 // defaultGitRefReader is the default implementation of GitRefReader
 type defaultGitRefReader struct{}
 
-func (g *defaultGitRefReader) GetCurrentRef() (string, error) {
-	// Try to get branch name first
-	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
-	output, err := cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(output)), nil
-	}
-
-	// If not on a branch, try to get tag name
-	cmd = exec.Command("git", "describe", "--tags", "--exact-match")
-	output, err = cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(output)), nil
-	}
-
-	// If not on a tag, get commit hash
-	cmd = exec.Command("git", "rev-parse", "--short", "HEAD")
-	output, err = cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current ref: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
-}
+func (g *defaultGitRefReader) GetCurrentRef() (string, error) { return githelpers.GetCurrentRef() }
 
 // Logger manages git command logging operations.
 type Logger struct {
 	logDir  string
 	logFile string
-	gitRef  GitRefReader
+
+	// gitRef returns current git repository ref (branch, tag or commit hash)
+	// to make logger completely independent and testable, we use getRef as a mockable component.
+	gitRef GitRefReader
 }
 
 // logEntry represents the JSON structure for log entries
