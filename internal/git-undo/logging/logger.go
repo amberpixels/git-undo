@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,13 @@ import (
 type Logger struct {
 	logDir  string
 	logFile string
+}
+
+// logEntry represents the JSON structure for log entries
+type logEntry struct {
+	Date string `json:"d"`   // timestamp
+	Ref  string `json:"ref"` // git reference
+	Cmd  string `json:"cmd"` // git command
 }
 
 // Entry represents a logged git command with its full identifier
@@ -68,13 +76,22 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 		ref = "unknown"
 	}
 
-	// Format the log entry with the current timestamp
-	entry := fmt.Sprintf("%s [%s] %s\n",
-		time.Now().Format("2006-01-02 15:04:05"),
-		ref,
-		strGitCommand,
-	)
-	return l.prependLogEntry(entry)
+	// Create JSON entry
+	entry := logEntry{
+		Date: time.Now().Format("2006-01-02 15:04:05"),
+		Ref:  ref,
+		Cmd:  strGitCommand,
+	}
+
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal log entry: %w", err)
+	}
+
+	// Add newline to JSON string
+	jsonStr := string(jsonBytes) + "\n"
+	return l.prependLogEntry(jsonStr)
 }
 
 // GetLogDir returns the path to the log directory.
@@ -135,43 +152,29 @@ func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 }
 
 // parseLogLine parses a log line into an Entry.
-// Format: "2025-05-16 10:37:59 [main] git commit ..."
+// Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}
 func parseLogLine(line string, isUndoed bool) (*Entry, error) {
 	// If the line is marked as undoed, remove the # prefix
 	if isUndoed {
 		line = line[1:]
 	}
 
-	// First split by "[" to get the timestamp part
-	parts := strings.SplitN(line, "[", 2)
-	if len(parts) != 2 {
+	var entry logEntry
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
 		return nil, fmt.Errorf("invalid log line format: %s", line)
 	}
 
 	// Parse timestamp
-	timestamp, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(parts[0]))
+	timestamp, err := time.Parse("2006-01-02 15:04:05", entry.Date)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
-	// Split the rest by "]" to get the reference
-	refParts := strings.SplitN(parts[1], "]", 2)
-	if len(refParts) != 2 {
-		return nil, fmt.Errorf("invalid log line format: %s", line)
-	}
-	ref := strings.TrimSpace(refParts[0])
-
-	// Extract command part (after timestamp and ref)
-	cmdParts := strings.SplitN(refParts[1], " git ", 2)
-	if len(cmdParts) != 2 {
-		return nil, fmt.Errorf("invalid log line format: %s", line)
-	}
-
 	return &Entry{
-		Command:    "git " + cmdParts[1],
+		Command:    entry.Cmd,
 		Identifier: line,
 		Timestamp:  timestamp,
-		Ref:        ref,
+		Ref:        entry.Ref,
 	}, nil
 }
 
