@@ -19,20 +19,20 @@ type Logger struct {
 	logFile string
 }
 
-// CommandEntry represents a logged git command with its full identifier
-type CommandEntry struct {
+// Entry represents a logged git command with its full identifier
+type Entry struct {
 	Command    string // just the command part
 	Identifier string // full line including timestamp and ref
 }
 
-// CommandType specifies whether to look for regular or undoed commands
-type CommandType int
+// EntryType specifies whether to look for regular or undoed entries
+type EntryType int
 
 const (
-	// RegularCommand represents a normal, non-undoed command
-	RegularCommand CommandType = iota
-	// UndoedCommand represents a command that has been marked as undoed
-	UndoedCommand
+	// RegularEntry represents a normal, non-undoed entry
+	RegularEntry EntryType = iota
+	// UndoedEntry represents an entry that has been marked as undoed
+	UndoedEntry
 )
 
 // NewLogger creates a new Logger instance.
@@ -75,10 +75,10 @@ func (l *Logger) GetLogDir() string {
 	return l.logDir
 }
 
-// ToggleCommand toggles the undo state of a command by adding or removing the "#" prefix.
-// The commandIdentifier should be in the format "TIMESTAMP [REF] COMMAND" (without the # prefix).
-// Returns true if the command was marked as undoed, false if it was unmarked.
-func (l *Logger) ToggleCommand(commandIdentifier string) (bool, error) {
+// ToggleEntry toggles the undo state of an entry by adding or removing the "#" prefix.
+// The entryIdentifier should be in the format "TIMESTAMP [REF] COMMAND" (without the # prefix).
+// Returns true if the entry was marked as undoed, false if it was unmarked.
+func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 	content, err := l.readLogFile()
 	if err != nil {
 		return false, err
@@ -89,7 +89,7 @@ func (l *Logger) ToggleCommand(commandIdentifier string) (bool, error) {
 		return false, errors.New("log file is empty")
 	}
 
-	// Find the line that matches our command identifier
+	// Find the line that matches our entry identifier
 	found := false
 	wasMarked := false
 	for i := range lines {
@@ -98,15 +98,15 @@ func (l *Logger) ToggleCommand(commandIdentifier string) (bool, error) {
 			continue
 		}
 
-		// Check if this line matches our command identifier
-		// For marked commands, we need to check without the # prefix
-		if line == commandIdentifier || (strings.HasPrefix(line, "#") && line[1:] == commandIdentifier) {
+		// Check if this line matches our entry identifier
+		// For marked entries, we need to check without the # prefix
+		if line == entryIdentifier || (strings.HasPrefix(line, "#") && line[1:] == entryIdentifier) {
 			if strings.HasPrefix(line, "#") {
-				// Command was marked, unmark it
+				// Entry was marked, unmark it
 				lines[i] = line[1:]
 				wasMarked = false
 			} else {
-				// Command was not marked, mark it
+				// Entry was not marked, mark it
 				lines[i] = "#" + line
 				wasMarked = true
 			}
@@ -116,7 +116,7 @@ func (l *Logger) ToggleCommand(commandIdentifier string) (bool, error) {
 	}
 
 	if !found {
-		return false, fmt.Errorf("command not found in log: %s", commandIdentifier)
+		return false, fmt.Errorf("entry not found in log: %s", entryIdentifier)
 	}
 
 	// Write the modified content back to the file
@@ -127,8 +127,8 @@ func (l *Logger) ToggleCommand(commandIdentifier string) (bool, error) {
 	return wasMarked, nil
 }
 
-// GetCommand returns either the last regular command or the last undoed command based on the commandType.
-func (l *Logger) GetCommand(commandType CommandType) (*CommandEntry, error) {
+// GetEntry returns either the last regular entry or the last undoed entry based on the entryType.
+func (l *Logger) GetEntry(entryType EntryType) (*Entry, error) {
 	content, err := l.readLogFile()
 	if err != nil {
 		return nil, err
@@ -146,12 +146,12 @@ func (l *Logger) GetCommand(commandType CommandType) (*CommandEntry, error) {
 		isUndoed := strings.HasPrefix(line, "#")
 
 		// Skip if we're looking for the wrong type
-		if (commandType == RegularCommand && isUndoed) ||
-			(commandType == UndoedCommand && !isUndoed) {
+		if (entryType == RegularEntry && isUndoed) ||
+			(entryType == UndoedEntry && !isUndoed) {
 			continue
 		}
 
-		// For undoed commands, we need to remove the # prefix
+		// For undoed entries, we need to remove the # prefix
 		if isUndoed {
 			line = line[1:]
 		}
@@ -162,19 +162,19 @@ func (l *Logger) GetCommand(commandType CommandType) (*CommandEntry, error) {
 			continue
 		}
 
-		return &CommandEntry{
+		return &Entry{
 			Command:    "git " + parts[1],
 			Identifier: line,
 		}, nil
 	}
 
-	switch commandType {
-	case RegularCommand:
+	switch entryType {
+	case RegularEntry:
 		return nil, errors.New("no git command found in log")
-	case UndoedCommand:
+	case UndoedEntry:
 		return nil, errors.New("no undoed command found in log")
 	default:
-		return nil, errors.New("invalid command type")
+		return nil, errors.New("invalid entry type")
 	}
 }
 

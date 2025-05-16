@@ -90,14 +90,14 @@ func (a *App) Run(args []string) error {
 
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
-		// Get the last undoed command
-		lastUndoedCmd, err := logger.GetCommand(logging.UndoedCommand)
+		// Get the last undoed entry
+		lastUndoedEntry, err := logger.GetEntry(logging.UndoedEntry)
 		if err != nil {
 			return fmt.Errorf("no command to redo: %w", err)
 		}
 
-		// Unmark the command in the log
-		marked, err := logger.ToggleCommand(lastUndoedCmd.Identifier)
+		// Unmark the entry in the log
+		marked, err := logger.ToggleEntry(lastUndoedEntry.Identifier)
 		if err != nil {
 			return fmt.Errorf("failed to unmark command: %w", err)
 		}
@@ -106,7 +106,7 @@ func (a *App) Run(args []string) error {
 		}
 
 		// Execute the original command
-		words, err := shellwords.Parse(lastUndoedCmd.Command)
+		words, err := shellwords.Parse(lastUndoedEntry.Command)
 		if err != nil {
 			return fmt.Errorf("invalid last undo-ed cmd: %w", err)
 		}
@@ -119,20 +119,20 @@ func (a *App) Run(args []string) error {
 			return fmt.Errorf("failed to redo command: %w", err)
 		}
 
-		a.logDebugf("Successfully redid: %s", lastUndoedCmd.Command)
+		a.logDebugf("Successfully redid: %s", lastUndoedEntry.Command)
 		return nil
 	}
 
 	// Get the last git command
-	lastCmd, err := logger.GetCommand(logging.RegularCommand)
+	lastEntry, err := logger.GetEntry(logging.RegularEntry)
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
 
-	a.logDebugf("Last git command: %s", yellowColor+lastCmd.Command+resetColor)
+	a.logDebugf("Last git command: %s", yellowColor+lastEntry.Command+resetColor)
 
 	// Get the appropriate undoer
-	u := undoer.New(lastCmd.Command)
+	u := undoer.New(lastEntry.Command)
 
 	// Get the undo command
 	undoCmd, err := u.GetUndoCommand()
@@ -152,14 +152,14 @@ func (a *App) Run(args []string) error {
 
 	// Execute the undo command
 	if success := undoer.ExecuteUndoCommand(undoCmd); success {
-		// Mark the command as undoed in the log
-		marked, err := logger.ToggleCommand(lastCmd.Identifier)
+		// Mark the entry as undoed in the log
+		marked, err := logger.ToggleEntry(lastEntry.Identifier)
 		if err != nil {
 			a.logWarnf("Failed to mark command as undoed: %v", err)
 		} else if !marked {
 			a.logWarnf("Command was already marked as undoed")
 		}
-		a.logDebugf("Successfully undid: %s via %s", lastCmd.Command, undoCmd.Command)
+		a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmd.Command)
 		if len(undoCmd.Warnings) > 0 {
 			for _, warning := range undoCmd.Warnings {
 				a.logWarnf("%s", warning)
@@ -168,7 +168,7 @@ func (a *App) Run(args []string) error {
 		return nil
 	}
 
-	return fmt.Errorf("failed to execute undo command %s via %s", lastCmd.Command, undoCmd.Command)
+	return fmt.Errorf("failed to execute undo command %s via %s", lastEntry.Command, undoCmd.Command)
 }
 
 func (a *App) cmdHook(hookArg string) error {
