@@ -19,6 +19,22 @@ type Logger struct {
 	logFile string
 }
 
+// CommandEntry represents a logged git command with its full identifier
+type CommandEntry struct {
+	Command    string // just the command part
+	Identifier string // full line including timestamp and ref
+}
+
+// CommandType specifies whether to look for regular or undoed commands
+type CommandType int
+
+const (
+	// RegularCommand represents a normal, non-undoed command
+	RegularCommand CommandType = iota
+	// UndoedCommand represents a command that has been marked as undoed
+	UndoedCommand
+)
+
 // NewLogger creates a new Logger instance.
 func NewLogger() (*Logger, error) {
 	paths, err := config.GetGitPaths()
@@ -34,6 +50,132 @@ func NewLogger() (*Logger, error) {
 		logDir:  paths.LogDir,
 		logFile: filepath.Join(paths.LogDir, "command-log.txt"),
 	}, nil
+}
+
+// LogCommand logs a git command with timestamp.
+func (l *Logger) LogCommand(strGitCommand string) error {
+	// Skip logging git undo commands
+	if strings.HasPrefix(strGitCommand, "git undo") {
+		return nil
+	}
+
+	// Get current ref (branch/tag/commit)
+	ref, err := l.getCurrentRef()
+	if err != nil {
+		// If we can't get the ref, just use "unknown"
+		ref = "unknown"
+	}
+
+	entry := fmt.Sprintf("%s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), ref, strGitCommand)
+	return l.prependLogEntry(entry)
+}
+
+// GetLogDir returns the path to the log directory.
+func (l *Logger) GetLogDir() string {
+	return l.logDir
+}
+
+// ToggleCommand toggles the undo state of a command by adding or removing the "#" prefix.
+// The commandIdentifier should be in the format "TIMESTAMP [REF] COMMAND" (without the # prefix).
+// Returns true if the command was marked as undoed, false if it was unmarked.
+func (l *Logger) ToggleCommand(commandIdentifier string) (bool, error) {
+	content, err := l.readLogFile()
+	if err != nil {
+		return false, err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 {
+		return false, errors.New("log file is empty")
+	}
+
+	// Find the line that matches our command identifier
+	found := false
+	wasMarked := false
+	for i := range lines {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+
+		// Check if this line matches our command identifier
+		// For marked commands, we need to check without the # prefix
+		if line == commandIdentifier || (strings.HasPrefix(line, "#") && line[1:] == commandIdentifier) {
+			if strings.HasPrefix(line, "#") {
+				// Command was marked, unmark it
+				lines[i] = line[1:]
+				wasMarked = false
+			} else {
+				// Command was not marked, mark it
+				lines[i] = "#" + line
+				wasMarked = true
+			}
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return false, fmt.Errorf("command not found in log: %s", commandIdentifier)
+	}
+
+	// Write the modified content back to the file
+	if err := os.WriteFile(l.logFile, []byte(strings.Join(lines, "\n")), 0600); err != nil {
+		return false, err
+	}
+
+	return wasMarked, nil
+}
+
+// GetCommand returns either the last regular command or the last undoed command based on the commandType.
+func (l *Logger) GetCommand(commandType CommandType) (*CommandEntry, error) {
+	content, err := l.readLogFile()
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(content), "\n")
+
+	// Find the first non-empty line that matches our criteria
+	for i := range lines {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+
+		isUndoed := strings.HasPrefix(line, "#")
+
+		// Skip if we're looking for the wrong type
+		if (commandType == RegularCommand && isUndoed) ||
+			(commandType == UndoedCommand && !isUndoed) {
+			continue
+		}
+
+		// For undoed commands, we need to remove the # prefix
+		if isUndoed {
+			line = line[1:]
+		}
+
+		// Extract command part (after timestamp and ref)
+		parts := strings.SplitN(line, " git ", 2)
+		if len(parts) < 2 {
+			continue
+		}
+
+		return &CommandEntry{
+			Command:    "git " + parts[1],
+			Identifier: line,
+		}, nil
+	}
+
+	switch commandType {
+	case RegularCommand:
+		return nil, errors.New("no git command found in log")
+	case UndoedCommand:
+		return nil, errors.New("no undoed command found in log")
+	default:
+		return nil, errors.New("invalid command type")
+	}
 }
 
 // getCurrentRef returns the current branch name, tag, or commit hash.
@@ -59,57 +201,6 @@ func (l *Logger) getCurrentRef() (string, error) {
 		return "", fmt.Errorf("failed to get current ref: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-// LogCommand logs a git command with timestamp.
-func (l *Logger) LogCommand(strGitCommand string) error {
-	// Skip logging git undo commands
-	if strings.HasPrefix(strGitCommand, "git undo") {
-		return nil
-	}
-
-	// Get current ref (branch/tag/commit)
-	ref, err := l.getCurrentRef()
-	if err != nil {
-		// If we can't get the ref, just use "unknown"
-		ref = "unknown"
-	}
-
-	entry := fmt.Sprintf("%s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), ref, strGitCommand)
-	return l.prependLogEntry(entry)
-}
-
-// GetLastCommand reads the last git command from the log file.
-func (l *Logger) GetLastCommand() (string, error) {
-	content, err := l.readLogFile()
-	if err != nil {
-		return "", err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
-	// Find the first non-empty line that contains a git command and is not marked as undoed
-	for i := range lines {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// Skip lines marked as undoed
-		if strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Extract command part (after timestamp and ref)
-		parts := strings.SplitN(line, " git ", 2)
-		if len(parts) < 2 {
-			continue
-		}
-
-		return "git " + parts[1], nil
-	}
-
-	return "", errors.New("no git command found in log")
 }
 
 // prependLogEntry prepends a new line into the log file.
@@ -148,116 +239,6 @@ func (l *Logger) prependLogEntry(entry string) error {
 	}
 
 	return nil
-}
-
-// GetLogDir returns the path to the log directory.
-func (l *Logger) GetLogDir() string {
-	return l.logDir
-}
-
-// MarkCommandAsUndoed marks a command as undoed by adding a "#" prefix.
-func (l *Logger) MarkCommandAsUndoed() error {
-	content, err := l.readLogFile()
-	if err != nil {
-		return err
-	}
-
-	lines := strings.Split(string(content), "\n")
-	if len(lines) == 0 {
-		return errors.New("log file is empty")
-	}
-
-	// Find the first non-empty line that is not already marked as undoed
-	for i := range lines {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// Skip lines already marked as undoed
-		if strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Mark the line as undoed
-		lines[i] = "#" + line
-		break
-	}
-
-	// Write the modified content back to the file
-	return os.WriteFile(l.logFile, []byte(strings.Join(lines, "\n")), 0600)
-}
-
-// GetLastUndoedCommand returns the last command that was marked as undoed.
-func (l *Logger) GetLastUndoedCommand() (string, error) {
-	content, err := l.readLogFile()
-	if err != nil {
-		return "", err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
-	// Find the first non-empty line that is marked as undoed
-	// This will be the most recently undoed command since we prepend new entries
-	candidate := ""
-	for i := range lines {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// Look for lines marked as undoed
-		if strings.HasPrefix(line, "#") {
-			// Extract command part (after timestamp)
-			parts := strings.SplitN(line[1:], " git ", 2) // Remove the # prefix
-			if len(parts) < 2 {
-				continue
-			}
-			candidate = "git " + parts[1]
-			continue
-		}
-
-		if candidate == "" {
-			return "", errors.New("cannot redo: there are newer undoed commands")
-		}
-		return candidate, nil
-	}
-
-	if candidate == "" {
-		return "", errors.New("no undoed command found in log")
-	}
-	return candidate, nil
-}
-
-// UnmarkLastUndoedCommand removes the "#" prefix from the last undoed command.
-func (l *Logger) UnmarkLastUndoedCommand() error {
-	content, err := l.readLogFile()
-	if err != nil {
-		return err
-	}
-
-	lines := strings.Split(string(content), "\n")
-	if len(lines) == 0 {
-		return errors.New("log file is empty")
-	}
-
-	// Find the first non-empty line that is marked as undoed
-	for i := range lines {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// Look for lines marked as undoed
-		if strings.HasPrefix(line, "#") {
-			// Remove the # prefix
-			lines[i] = line[1:]
-			break
-		}
-	}
-
-	// Write the modified content back to the file
-	return os.WriteFile(l.logFile, []byte(strings.Join(lines, "\n")), 0600)
 }
 
 // readLogFile reads the content of the log file.
