@@ -106,11 +106,6 @@ func (l *Logger) GetLastCommand() (string, error) {
 			continue
 		}
 
-		// Skip "git status" commands
-		if strings.HasPrefix(parts[1], "status") {
-			continue
-		}
-
 		return "git " + parts[1], nil
 	}
 
