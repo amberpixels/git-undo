@@ -14,10 +14,43 @@ import (
 	"github.com/amberpixels/git-undo/internal/git-undo/config"
 )
 
+// GitRefReader provides methods for reading git references
+type GitRefReader interface {
+	GetCurrentRef() (string, error)
+}
+
+// defaultGitRefReader is the default implementation of GitRefReader
+type defaultGitRefReader struct{}
+
+func (g *defaultGitRefReader) GetCurrentRef() (string, error) {
+	// Try to get branch name first
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	output, err := cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(output)), nil
+	}
+
+	// If not on a branch, try to get tag name
+	cmd = exec.Command("git", "describe", "--tags", "--exact-match")
+	output, err = cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(output)), nil
+	}
+
+	// If not on a tag, get commit hash
+	cmd = exec.Command("git", "rev-parse", "--short", "HEAD")
+	output, err = cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current ref: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // Logger manages git command logging operations.
 type Logger struct {
 	logDir  string
 	logFile string
+	gitRef  GitRefReader
 }
 
 // logEntry represents the JSON structure for log entries
@@ -59,6 +92,7 @@ func NewLogger() (*Logger, error) {
 	return &Logger{
 		logDir:  paths.LogDir,
 		logFile: filepath.Join(paths.LogDir, "command-log.txt"),
+		gitRef:  &defaultGitRefReader{},
 	}, nil
 }
 
@@ -70,7 +104,7 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	}
 
 	// Get current ref (branch/tag/commit)
-	ref, err := l.getCurrentRef()
+	ref, err := l.gitRef.GetCurrentRef()
 	if err != nil {
 		// If we can't get the ref, just use "unknown"
 		ref = "unknown"
@@ -188,7 +222,7 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 	switch len(refArg) {
 	case 0:
 		// No ref provided, use current ref
-		currentRef, err := l.getCurrentRef()
+		currentRef, err := l.gitRef.GetCurrentRef()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current ref: %w", err)
 		}
@@ -253,31 +287,6 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 		return nil, fmt.Errorf("no %s command found in log for reference [%s]", typeStr, ref)
 	}
 	return nil, fmt.Errorf("no %s command found in log", typeStr)
-}
-
-// getCurrentRef returns the current branch name, tag, or commit hash.
-func (l *Logger) getCurrentRef() (string, error) {
-	// Try to get branch name first
-	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
-	output, err := cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(output)), nil
-	}
-
-	// If not on a branch, try to get tag name
-	cmd = exec.Command("git", "describe", "--tags", "--exact-match")
-	output, err = cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(output)), nil
-	}
-
-	// If not on a tag, get commit hash
-	cmd = exec.Command("git", "rev-parse", "--short", "HEAD")
-	output, err = cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current ref: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
 }
 
 // prependLogEntry prepends a new line into the log file.
