@@ -1,11 +1,11 @@
-package config_test
+package githelpers_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/amberpixels/git-undo/internal/git-undo/config"
+	"github.com/amberpixels/git-undo/internal/githelpers"
 	"github.com/amberpixels/git-undo/internal/testutil"
 	"github.com/stretchr/testify/suite"
 )
@@ -28,7 +28,7 @@ func (s *PathsTestSuite) TestGetGitPaths() {
 	err = os.Chdir(s.GetRepoDir())
 	s.Require().NoError(err)
 
-	paths, err := config.GetGitPaths()
+	paths, err := githelpers.GetGitPaths()
 	s.Require().NoError(err)
 	s.NotNil(paths)
 
@@ -38,8 +38,7 @@ func (s *PathsTestSuite) TestGetGitPaths() {
 
 	// Verify paths are correct
 	s.Equal(canonicalRepoDir, paths.RepoRoot)
-	s.Equal(filepath.Join(canonicalRepoDir, ".git"), paths.GitDir)
-	s.Equal(filepath.Join(canonicalRepoDir, ".git", "undo-logs"), paths.LogDir)
+	s.Equal(filepath.Join(canonicalRepoDir, ".git"), paths.RepoGitDir)
 }
 
 func (s *PathsTestSuite) TestGetGitPathsOutsideRepo() {
@@ -57,7 +56,7 @@ func (s *PathsTestSuite) TestGetGitPathsOutsideRepo() {
 	s.Require().NoError(err)
 
 	// Try to get paths - should fail
-	paths, err := config.GetGitPaths()
+	paths, err := githelpers.GetGitPaths()
 	s.Require().Error(err)
 	s.Nil(paths)
 	s.Contains(err.Error(), "failed to get git repository root")
@@ -65,7 +64,7 @@ func (s *PathsTestSuite) TestGetGitPathsOutsideRepo() {
 
 func (s *PathsTestSuite) TestValidateGitRepo() {
 	// Should pass inside git repo
-	err := config.ValidateGitRepo()
+	err := githelpers.ValidateGitRepo()
 	s.Require().NoError(err)
 
 	// Save current directory
@@ -82,41 +81,9 @@ func (s *PathsTestSuite) TestValidateGitRepo() {
 	s.Require().NoError(err)
 
 	// Should fail outside git repo
-	err = config.ValidateGitRepo()
+	err = githelpers.ValidateGitRepo()
 	s.Require().Error(err)
 	s.Equal("not in a git repository", err.Error())
-}
-
-func (s *PathsTestSuite) TestEnsureLogDir() {
-	// Save current directory
-	originalDir, err := os.Getwd()
-	s.Require().NoError(err)
-	defer os.Chdir(originalDir)
-
-	// Change to test repository directory
-	err = os.Chdir(s.GetRepoDir())
-	s.Require().NoError(err)
-
-	paths, err := config.GetGitPaths()
-	s.Require().NoError(err)
-	s.NotNil(paths)
-
-	// Get canonical path for test repo directory
-	canonicalRepoDir, err := filepath.EvalSymlinks(s.GetRepoDir())
-	s.Require().NoError(err)
-
-	// Ensure log directory exists
-	err = config.EnsureLogDir(paths)
-	s.Require().NoError(err)
-
-	// Verify directory exists using canonical path
-	logDirPath := filepath.Join(canonicalRepoDir, ".git", "undo-logs")
-	_, err = os.Stat(logDirPath)
-	s.Require().NoError(err, "Log directory should exist at %s", logDirPath)
-
-	// Try again - should not error
-	err = config.EnsureLogDir(paths)
-	s.Require().NoError(err)
 }
 
 func (s *PathsTestSuite) TestGetGitPathsWithWorktree() {
@@ -142,12 +109,11 @@ func (s *PathsTestSuite) TestGetGitPathsWithWorktree() {
 	s.Require().NoError(err)
 
 	// Get paths from worktree
-	paths, err := config.GetGitPaths()
+	paths, err := githelpers.GetGitPaths()
 	s.Require().NoError(err)
 	s.NotNil(paths)
 
 	// Verify paths are correct
 	s.Equal(canonicalWorktreeDir, paths.RepoRoot)
-	s.Equal(filepath.Join(canonicalRepoDir, ".git", "worktrees", "worktree"), paths.GitDir)
-	s.Equal(filepath.Join(canonicalRepoDir, ".git", "worktrees", "worktree", "undo-logs"), paths.LogDir)
+	s.Equal(filepath.Join(canonicalRepoDir, ".git", "worktrees", "worktree"), paths.RepoGitDir)
 }

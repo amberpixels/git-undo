@@ -1,7 +1,6 @@
 package logging
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,43 +9,78 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amberpixels/git-undo/internal/git-undo/config"
 	"github.com/amberpixels/git-undo/internal/githelpers"
 )
-
-// GitRefReader provides methods for reading git references
-type GitRefReader interface {
-	GetCurrentRef() (string, error)
-}
-
-// defaultGitRefReader is the default implementation of GitRefReader
-type defaultGitRefReader struct{}
-
-func (g *defaultGitRefReader) GetCurrentRef() (string, error) { return githelpers.GetCurrentRef() }
 
 // Logger manages git command logging operations.
 type Logger struct {
 	logDir  string
 	logFile string
 
-	// gitRef returns current git repository ref (branch, tag or commit hash)
+	// gitCtrl controls git-related operations (e.g., current ref, path to .git)
 	// to make logger completely independent and testable, we use getRef as a mockable component.
-	gitRef GitRefReader
+	gitCtrl githelpers.GitCtrl
 }
 
-// logEntry represents the JSON structure for log entries
-type logEntry struct {
-	Date string `json:"d"`   // timestamp
-	Ref  string `json:"ref"` // git reference
-	Cmd  string `json:"cmd"` // git command
-}
+const (
+	logEntryDateFormat = time.DateTime
+	logFileName        = "commands"
+)
 
 // Entry represents a logged git command with its full identifier
 type Entry struct {
-	Command    string    // just the command part
-	Identifier string    // full line including timestamp and ref
-	Timestamp  time.Time // parsed timestamp of the entry
-	Ref        string    // reference (branch/tag/commit) where the command was executed
+	// Timestamp is parsed timestamp of the entry.
+	Timestamp time.Time
+	// Ref is reference (branch/tag/commit) where the command was executed.
+	Ref string
+	// Command is just the command part.
+	Command string
+
+	// Undoed is true if the entry is undoed.
+	Undoed bool
+}
+
+// GetIdentifier returns full command without sign of undoed state (# prefix)
+func (e *Entry) GetIdentifier() string {
+	return strings.TrimPrefix(e.String(), "#")
+}
+
+// String returns a human-readable representation of the entry.
+// This representation goes into the log file as well
+func (e *Entry) String() string {
+	text, _ := e.MarshalText()
+	return string(text)
+}
+
+func (e *Entry) MarshalText() ([]byte, error) {
+	entryString := fmt.Sprintf("%s|%s|%s", e.Timestamp.Format(logEntryDateFormat), e.Ref, e.Command)
+	if e.Undoed {
+		entryString = "#" + entryString
+	}
+	return []byte(entryString), nil
+}
+
+func (e *Entry) UnmarshalText(data []byte) error {
+	entryString := string(data)
+	if strings.HasPrefix(entryString, "#") {
+		entryString = strings.TrimPrefix(entryString, "#")
+		e.Undoed = true
+	}
+
+	parts := strings.SplitN(entryString, "|", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid log entry format: %s", entryString)
+	}
+	var err error
+	e.Timestamp, err = time.Parse(logEntryDateFormat, parts[0])
+	if err != nil {
+		return fmt.Errorf("failed to parse timestamp: %w", err)
+	}
+
+	e.Ref = parts[1]
+	e.Command = parts[2]
+
+	return nil
 }
 
 // EntryType specifies whether to look for regular or undoed entries
@@ -60,21 +94,32 @@ const (
 )
 
 // NewLogger creates a new Logger instance.
-func NewLogger() (*Logger, error) {
-	paths, err := config.GetGitPaths()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get git paths: %w", err)
-	}
-
-	if err := config.EnsureLogDir(paths); err != nil {
-		return nil, fmt.Errorf("failed to ensure log directory: %w", err)
-	}
-
+func NewLogger() *Logger {
 	return &Logger{
-		logDir:  paths.LogDir,
-		logFile: filepath.Join(paths.LogDir, "command-log.txt"),
-		gitRef:  &defaultGitRefReader{},
-	}, nil
+		gitCtrl: githelpers.NewGitCtrl(),
+	}
+}
+
+// Init initializes the logger:
+// it sets its logDir and logFile corresponding to the current git repository.
+func (l *Logger) Init(gitCtrlArg ...githelpers.GitCtrl) error {
+	if len(gitCtrlArg) > 0 {
+		l.gitCtrl = gitCtrlArg[0]
+	}
+
+	repoGitDir, err := l.gitCtrl.GetRepoGitDir()
+	if err != nil {
+		return fmt.Errorf("failed to get git directory: %w", err)
+	}
+	l.logDir = filepath.Join(repoGitDir, "git-undo")
+
+	if err := EnsureLogDir(l.logDir); err != nil {
+		return fmt.Errorf("failed to ensure log directory: %w", err)
+	}
+
+	l.logFile = filepath.Join(l.logDir, logFileName)
+
+	return nil
 }
 
 // LogCommand logs a git command with timestamp.
@@ -85,37 +130,24 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	}
 
 	// Get current ref (branch/tag/commit)
-	ref, err := l.gitRef.GetCurrentRef()
+	ref, err := l.gitCtrl.GetCurrentGitRef()
 	if err != nil {
 		// If we can't get the ref, just use "unknown"
 		ref = "unknown"
 	}
 
-	// Create JSON entry
-	entry := logEntry{
-		Date: time.Now().Format("2006-01-02 15:04:05"),
-		Ref:  ref,
-		Cmd:  strGitCommand,
-	}
-
-	// Marshal to JSON
-	jsonBytes, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("failed to marshal log entry: %w", err)
-	}
-
-	// Add newline to JSON string
-	jsonStr := string(jsonBytes) + "\n"
-	return l.prependLogEntry(jsonStr)
+	return l.prependLogEntry((&Entry{
+		Timestamp: time.Now(),
+		Ref:       ref,
+		Command:   strGitCommand,
+	}).String())
 }
 
-// GetLogDir returns the path to the log directory.
-func (l *Logger) GetLogDir() string {
-	return l.logDir
-}
+// GetLogPath returns the path to the log file
+func (l *Logger) GetLogPath() string { return l.logFile }
 
 // ToggleEntry toggles the undo state of an entry by adding or removing the "#" prefix.
-// The entryIdentifier should be in the format "TIMESTAMP [REF] COMMAND" (without the # prefix).
+// The entryIdentifier should be in the format "TIMESTAMP|REF|COMMAND" (without the # prefix).
 // Returns true if the entry was marked as undoed, false if it was unmarked.
 func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 	content, err := l.readLogFile()
@@ -174,23 +206,12 @@ func parseLogLine(line string, isUndoed bool) (*Entry, error) {
 		line = line[1:]
 	}
 
-	var entry logEntry
-	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+	entry := &Entry{}
+	if err := entry.UnmarshalText([]byte(line)); err != nil {
 		return nil, fmt.Errorf("invalid log line format: %s", line)
 	}
 
-	// Parse timestamp
-	timestamp, err := time.Parse("2006-01-02 15:04:05", entry.Date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse timestamp: %w", err)
-	}
-
-	return &Entry{
-		Command:    entry.Cmd,
-		Identifier: line,
-		Timestamp:  timestamp,
-		Ref:        entry.Ref,
-	}, nil
+	return entry, nil
 }
 
 // GetEntry returns either the last regular entry or the last undoed entry based on the entryType.
@@ -203,7 +224,7 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 	switch len(refArg) {
 	case 0:
 		// No ref provided, use current ref
-		currentRef, err := l.gitRef.GetCurrentRef()
+		currentRef, err := l.gitCtrl.GetCurrentGitRef()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current ref: %w", err)
 		}
@@ -243,6 +264,7 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 		// Parse the log line into an Entry
 		entry, err := parseLogLine(line, isUndoed)
 		if err != nil {
+			// TODO: in debug mode print the warning out
 			continue // Skip malformed lines
 		}
 
@@ -282,7 +304,7 @@ func (l *Logger) prependLogEntry(entry string) error {
 	defer out.Close()
 
 	// Insert our new entry line
-	if _, err := out.WriteString(entry); err != nil {
+	if _, err := out.WriteString(entry + "\n"); err != nil {
 		return fmt.Errorf("failed to write log entry: %w", err)
 	}
 
@@ -310,13 +332,20 @@ func (l *Logger) prependLogEntry(entry string) error {
 
 // readLogFile reads the content of the log file.
 func (l *Logger) readLogFile() ([]byte, error) {
+	var content []byte
 	if _, err := os.Stat(l.logFile); os.IsNotExist(err) {
-		return nil, errors.New("no command log found")
-	}
+		// let's create the file instead
+		fmt.Println("ATTEMPT TO CREATE AN EMPTY LOG FILE", l.logFile)
+		if err := os.WriteFile(l.logFile, []byte{}, 0644); err != nil {
+			fmt.Println("<><><><")
+			return nil, fmt.Errorf("failed to create log file: %w", err)
+		}
 
-	content, err := os.ReadFile(l.logFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read log file: %w", err)
+		content = []byte{}
+	} else {
+		if content, err = os.ReadFile(l.logFile); err != nil {
+			return nil, fmt.Errorf("failed to read log file: %w", err)
+		}
 	}
 
 	return content, nil

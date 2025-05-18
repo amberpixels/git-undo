@@ -19,6 +19,10 @@ func main() {
 	}
 
 	application := app.New(verbose, dryRun)
+	if err := application.Init(); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, redColor+"git-undo ❌: "+grayColor+err.Error()+resetColor)
+		os.Exit(1)
+	}
 	if err := application.Run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, redColor+"git-undo ❌: "+grayColor+err.Error()+resetColor)
 		os.Exit(1)

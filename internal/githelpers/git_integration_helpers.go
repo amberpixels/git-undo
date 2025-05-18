@@ -1,9 +1,8 @@
-package config
+package githelpers
 
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -11,9 +10,8 @@ import (
 
 // GitPaths holds important git repository paths.
 type GitPaths struct {
-	RepoRoot string
-	GitDir   string
-	LogDir   string
+	RepoRoot   string
+	RepoGitDir string
 }
 
 // GetGitPaths retrieves relevant git repository paths.
@@ -41,9 +39,8 @@ func GetGitPaths() (*GitPaths, error) {
 	}
 
 	return &GitPaths{
-		RepoRoot: repoRoot,
-		GitDir:   gitDir,
-		LogDir:   filepath.Join(gitDir, "undo-logs"),
+		RepoRoot:   repoRoot,
+		RepoGitDir: gitDir,
 	}, nil
 }
 
@@ -52,14 +49,6 @@ func ValidateGitRepo() error {
 	cmd := exec.Command("git", "rev-parse", "--git-dir")
 	if err := cmd.Run(); err != nil {
 		return errors.New("not in a git repository")
-	}
-	return nil
-}
-
-// EnsureLogDir ensures the git-undo log directory exists.
-func EnsureLogDir(paths *GitPaths) error {
-	if err := os.MkdirAll(paths.LogDir, 0750); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 	return nil
 }

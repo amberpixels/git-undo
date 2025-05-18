@@ -1,37 +1,32 @@
 package logging
 
 import (
+	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/amberpixels/git-undo/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockGitRefReader implements GitRefReader for testing
-type mockGitRefReader struct {
-	currentRef string
-}
-
-func (m *mockGitRefReader) GetCurrentRef() (string, error) {
-	return m.currentRef, nil
-}
-
 func TestLogger_E2E(t *testing.T) {
-	// Setup temporary directory for test
-	tmpDir := t.TempDir()
-	t.Setenv("GIT_UNDO_DIR", tmpDir)
+	// 1. Create a brand-new sandbox
+	tmpGitUndoDir, err := os.MkdirTemp("", "gitundo-test-*")
+	require.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpGitUndoDir)
+	}()
 
 	// Create logger instance
-	logger, err := NewLogger()
-	require.NoError(t, err)
+	logger := NewLogger()
 	require.NotNil(t, logger)
 
 	// Create and set mock git ref reader
-	mockGit := &mockGitRefReader{currentRef: "main"}
-	SetGitRefReader(logger, mockGit)
+	mgc := testutil.NewMockGitCtrl(tmpGitUndoDir)
+	require.NoError(t, logger.Init(mgc))
 
 	// Test data - commands to log
 	commands := []struct {
@@ -48,19 +43,26 @@ func TestLogger_E2E(t *testing.T) {
 	// 1. Log all commands
 	t.Log("Logging commands...")
 	for _, cmd := range commands {
-		mockGit.currentRef = cmd.ref // Set mock ref before logging
+		testutil.SwitchRef(mgc, cmd.ref) // Set mock ref before logging
 		err := logger.LogCommand(cmd.cmd)
 		require.NoError(t, err)
 	}
 
 	// Verify log file exists and has content
-	logFile := filepath.Join(logger.GetLogDir(), "command-log.txt")
+	logFile := logger.GetLogPath()
 	_, err = os.Stat(logFile)
 	require.NoError(t, err)
 
-	// 2. Get latest entry from feature/test branch
+	// 2.1. Read all log entries
+	content, err := logger.readLogFile()
+	require.NoError(t, err)
+	assert.NotEmpty(t, content)
+	lines := strings.Split(string(content), "\n")
+	fmt.Println("~~~ ", len(lines))
+
+	// 2.2 Get latest entry from feature/test branch
 	t.Log("Getting latest entry from feature/test...")
-	mockGit.currentRef = "feature/test"
+	testutil.SwitchRef(mgc, "feature/test")
 	entry, err := logger.GetEntry(RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, commands[4].cmd, entry.Command)
@@ -68,7 +70,7 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 3. Toggle the latest entry as undoed
 	t.Log("Toggling latest entry as undoed...")
-	marked, err := logger.ToggleEntry(entry.Identifier)
+	marked, err := logger.ToggleEntry(entry.GetIdentifier())
 	require.NoError(t, err)
 	assert.True(t, marked, "Entry should be marked as undoed")
 
@@ -81,13 +83,14 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 5. Toggle the entry back to regular
 	t.Log("Toggling entry back to regular...")
-	marked, err = logger.ToggleEntry(undoedEntry.Identifier)
+	marked, err = logger.ToggleEntry(undoedEntry.GetIdentifier())
 	require.NoError(t, err)
 	assert.False(t, marked, "Entry should be unmarked")
 
 	// 6. Switch to main branch and get its latest entry
 	t.Log("Getting latest entry from main branch...")
-	mockGit.currentRef = "main"
+	testutil.SwitchRef(mgc, "main")
+
 	mainEntry, err := logger.GetEntry(RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, commands[1].cmd, mainEntry.Command)
@@ -95,7 +98,7 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 7. Test entry parsing
 	t.Log("Testing entry parsing...")
-	parsedEntry, err := parseLogLine(mainEntry.Identifier, false)
+	parsedEntry, err := parseLogLine(mainEntry.GetIdentifier(), false)
 	require.NoError(t, err)
 	assert.Equal(t, mainEntry.Command, parsedEntry.Command)
 	assert.Equal(t, mainEntry.Ref, parsedEntry.Ref)

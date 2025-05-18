@@ -43,7 +43,6 @@ func (s *GitTestSuite) SetupSuite() {
 	s.GitTestSuite.SetupSuite()
 
 	s.application = app.New(verbose, false)
-	s.application.SetRepoDir(s.GetRepoDir())
 }
 
 // gitUndo runs git-undo with the given arguments.
@@ -83,6 +82,10 @@ func (s *GitTestSuite) gitUndoLog() string {
 
 // TestUndoBranch tests the branch deletion functionality.
 func (s *GitTestSuite) TestUndoBranch() {
+	s.NoError(
+		s.application.Init(testutil.NewMockGitCtrl(s.GetRepoDir())),
+	)
+
 	// Create a branch - hook is automatically simulated
 	s.Git("branch", "feature")
 	s.AssertBranchExists("feature")

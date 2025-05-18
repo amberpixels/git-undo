@@ -5,21 +5,29 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
-	"github.com/amberpixels/git-undo/internal/git-undo/config"
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/amberpixels/git-undo/internal/githelpers"
 	"github.com/mattn/go-shellwords"
 )
 
+// GitCtrl provides methods for reading git references
+type GitCtrl interface {
+	GetCurrentGitRef() (string, error)
+	GetRepoGitDir() (string, error)
+}
+
 // App represents the main application.
 type App struct {
 	verbose bool
 	dryRun  bool
 	repoDir string
+
+	gitCtrl GitCtrl
+
+	lgr *logging.Logger
 }
 
 // New creates a new App instance.
@@ -27,11 +35,20 @@ func New(verbose, dryRun bool) *App {
 	return &App{
 		verbose: verbose,
 		dryRun:  dryRun,
+		gitCtrl: githelpers.NewGitCtrl(),
+		lgr:     logging.NewLogger(),
 	}
 }
 
-func (a *App) SetRepoDir(repoDir string) {
-	a.repoDir = repoDir
+func (a *App) Init(gitCtrlArg ...githelpers.GitCtrl) error {
+	if len(gitCtrlArg) > 0 {
+		a.gitCtrl = gitCtrlArg[0]
+	}
+	if err := a.lgr.Init(a.gitCtrl); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	return nil
 }
 
 // ANSI escape code for gray color.
@@ -68,7 +85,7 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Ensure we're inside a Git repository
-	if err := config.ValidateGitRepo(); err != nil {
+	if err := githelpers.ValidateGitRepo(); err != nil {
 		return err
 	}
 
@@ -82,22 +99,16 @@ func (a *App) Run(args []string) error {
 		}
 	}
 
-	// Create a new logger
-	logger, err := logging.NewLogger()
-	if err != nil {
-		return fmt.Errorf("logger initialization: %w", err)
-	}
-
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
 		// Get the last undoed entry (from current reference)
-		lastUndoedEntry, err := logger.GetEntry(logging.UndoedEntry)
+		lastUndoedEntry, err := a.lgr.GetEntry(logging.UndoedEntry)
 		if err != nil {
 			return fmt.Errorf("no command to redo: %w", err)
 		}
 
 		// Unmark the entry in the log
-		marked, err := logger.ToggleEntry(lastUndoedEntry.Identifier)
+		marked, err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier())
 		if err != nil {
 			return fmt.Errorf("failed to unmark command: %w", err)
 		}
@@ -124,7 +135,7 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Get the last git command
-	lastEntry, err := logger.GetEntry(logging.RegularEntry)
+	lastEntry, err := a.lgr.GetEntry(logging.RegularEntry)
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
@@ -154,7 +165,7 @@ func (a *App) Run(args []string) error {
 	// Execute the undo command
 	if success := undoer.ExecuteUndoCommand(undoCmd); success {
 		// Mark the entry as undoed in the log
-		marked, err := logger.ToggleEntry(lastEntry.Identifier)
+		marked, err := a.lgr.ToggleEntry(lastEntry.GetIdentifier())
 		if err != nil {
 			a.logWarnf("Failed to mark command as undoed: %v", err)
 		} else if !marked {
@@ -196,12 +207,7 @@ func (a *App) cmdHook(hookArg string) error {
 		return nil
 	}
 
-	logger, err := logging.NewLogger()
-	if err != nil {
-		return fmt.Errorf("failed to create logger: %w", err)
-	}
-
-	if err := logger.LogCommand(hooked); err != nil {
+	if err := a.lgr.LogCommand(hooked); err != nil {
 		return fmt.Errorf("failed to log command: %w", err)
 	}
 
@@ -211,13 +217,8 @@ func (a *App) cmdHook(hookArg string) error {
 
 // cmdLog displays the git-undo command log.
 func (a *App) cmdLog() error {
-	logger, err := logging.NewLogger()
-	if err != nil {
-		return fmt.Errorf("logger initialization: %w", err)
-	}
-
 	// Get the log file path
-	logFile := filepath.Join(logger.GetLogDir(), "command-log.txt")
+	logFile := a.lgr.GetLogPath()
 
 	// Check if log file exists
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
