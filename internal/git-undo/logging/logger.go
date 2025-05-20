@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
 // Logger manages git command logging operations.
@@ -17,13 +15,20 @@ type Logger struct {
 	logDir  string
 	logFile string
 
-	// gitCtrl controls git-related operations (e.g., current ref, path to .git)
-	// to make logger completely independent and testable, we use getRef as a mockable component.
-	gitCtrl githelpers.GitCtrl
+	// err is nil when everything IS OK: logger is healthy, initialized OK (files exists, are accessible, etc)
+	err error
+
+	// git is a GitHelper (calling getting current ref, etc)
+	git GitHelper
+}
+
+type GitHelper interface {
+	GetCurrentGitRef() (string, error)
 }
 
 const (
 	logEntryDateFormat = time.DateTime
+	logFileDirName     = "git-undo"
 	logFileName        = "commands"
 )
 
@@ -94,43 +99,33 @@ const (
 )
 
 // NewLogger creates a new Logger instance.
-func NewLogger() *Logger {
-	return &Logger{
-		gitCtrl: githelpers.NewGitCtrl(),
-	}
-}
+func NewLogger(repoGitDir string, git GitHelper) *Logger {
+	lgr := &Logger{git: git}
 
-// Init initializes the logger:
-// it sets its logDir and logFile corresponding to the current git repository.
-func (l *Logger) Init(gitCtrlArg ...githelpers.GitCtrl) error {
-	if len(gitCtrlArg) > 0 {
-		l.gitCtrl = gitCtrlArg[0]
+	// default log file path will be .git/git-undo/commands
+	lgr.logDir = filepath.Join(repoGitDir, logFileDirName)
+	lgr.logFile = filepath.Join(lgr.logDir, logFileName)
+
+	if err := EnsureLogDir(lgr.logDir); err != nil {
+		lgr.err = fmt.Errorf("failed to ensure log directory: %w", err)
 	}
 
-	repoGitDir, err := l.gitCtrl.GetRepoGitDir()
-	if err != nil {
-		return fmt.Errorf("failed to get git directory: %w", err)
-	}
-	l.logDir = filepath.Join(repoGitDir, "git-undo")
-
-	if err := EnsureLogDir(l.logDir); err != nil {
-		return fmt.Errorf("failed to ensure log directory: %w", err)
-	}
-
-	l.logFile = filepath.Join(l.logDir, logFileName)
-
-	return nil
+	return lgr
 }
 
 // LogCommand logs a git command with timestamp.
 func (l *Logger) LogCommand(strGitCommand string) error {
+	if l.err != nil {
+		return fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
 	// Skip logging git undo commands
 	if strings.HasPrefix(strGitCommand, "git undo") {
 		return nil
 	}
 
 	// Get current ref (branch/tag/commit)
-	ref, err := l.gitCtrl.GetCurrentGitRef()
+	ref, err := l.git.GetCurrentGitRef()
 	if err != nil {
 		// If we can't get the ref, just use "unknown"
 		ref = "unknown"
@@ -150,6 +145,10 @@ func (l *Logger) GetLogPath() string { return l.logFile }
 // The entryIdentifier should be in the format "TIMESTAMP|REF|COMMAND" (without the # prefix).
 // Returns true if the entry was marked as undoed, false if it was unmarked.
 func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
+	if l.err != nil {
+		return false, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
 	content, err := l.readLogFile()
 	if err != nil {
 		return false, err
@@ -171,16 +170,15 @@ func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 
 		// Check if this line matches our entry identifier
 		// For marked entries, we need to check without the # prefix
-		if line == entryIdentifier || (strings.HasPrefix(line, "#") && line[1:] == entryIdentifier) {
-			if strings.HasPrefix(line, "#") {
-				// Entry was marked, unmark it
-				lines[i] = line[1:]
-				wasMarked = false
-			} else {
-				// Entry was not marked, mark it
-				lines[i] = "#" + line
-				wasMarked = true
-			}
+		if line == entryIdentifier {
+			lines[i] = "#" + line
+			wasMarked = true
+			found = true
+			break
+		} else if strings.HasPrefix(line, "#") && line[1:] == entryIdentifier {
+			// Entry was marked, unmark it
+			lines[i] = line[1:]
+			wasMarked = false
 			found = true
 			break
 		}
@@ -198,33 +196,21 @@ func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 	return wasMarked, nil
 }
 
-// parseLogLine parses a log line into an Entry.
-// Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}
-func parseLogLine(line string, isUndoed bool) (*Entry, error) {
-	// If the line is marked as undoed, remove the # prefix
-	if isUndoed {
-		line = line[1:]
-	}
-
-	entry := &Entry{}
-	if err := entry.UnmarshalText([]byte(line)); err != nil {
-		return nil, fmt.Errorf("invalid log line format: %s", line)
-	}
-
-	return entry, nil
-}
-
 // GetEntry returns either the last regular entry or the last undoed entry based on the entryType.
 // If a reference is provided in refArg, only entries from that specific reference are considered.
 // If no reference is provided, uses the current reference (branch/tag/commit).
 // Use "any" as refArg to match any reference.
 func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
 	// Determine which reference to use
 	var ref string
 	switch len(refArg) {
 	case 0:
 		// No ref provided, use current ref
-		currentRef, err := l.gitCtrl.GetCurrentGitRef()
+		currentRef, err := l.git.GetCurrentGitRef()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current ref: %w", err)
 		}
@@ -294,6 +280,10 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 
 // prependLogEntry prepends a new line into the log file.
 func (l *Logger) prependLogEntry(entry string) error {
+	if l.err != nil {
+		return fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
 	tmpFile := l.logFile + ".tmp"
 
 	// Create a tmp file
@@ -332,12 +322,14 @@ func (l *Logger) prependLogEntry(entry string) error {
 
 // readLogFile reads the content of the log file.
 func (l *Logger) readLogFile() ([]byte, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
 	var content []byte
 	if _, err := os.Stat(l.logFile); os.IsNotExist(err) {
 		// let's create the file instead
-		fmt.Println("ATTEMPT TO CREATE AN EMPTY LOG FILE", l.logFile)
 		if err := os.WriteFile(l.logFile, []byte{}, 0644); err != nil {
-			fmt.Println("<><><><")
 			return nil, fmt.Errorf("failed to create log file: %w", err)
 		}
 
@@ -348,5 +340,26 @@ func (l *Logger) readLogFile() ([]byte, error) {
 		}
 	}
 
+	// trim last line break
+	if len(content) > 0 && content[len(content)-1] == '\n' {
+		content = content[:len(content)-1]
+	}
+
 	return content, nil
+}
+
+// parseLogLine parses a log line into an Entry.
+// Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}
+func parseLogLine(line string, isUndoed bool) (*Entry, error) {
+	// If the line is marked as undoed, remove the # prefix
+	if isUndoed {
+		line = line[1:]
+	}
+
+	entry := &Entry{}
+	if err := entry.UnmarshalText([]byte(line)); err != nil {
+		return nil, fmt.Errorf("invalid log line format: %s", line)
+	}
+
+	return entry, nil
 }

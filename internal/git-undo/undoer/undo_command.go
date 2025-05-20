@@ -3,17 +3,17 @@ package undoer
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
-	"github.com/mattn/go-shellwords"
+	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
-var ErrUndoNotSupported = errors.New("git undo not supported")
+type GitExec interface {
+	GitRun(subCmd string, args ...string) error
+	GitOutput(subCmd string, args ...string) (string, error)
+}
 
-// gitStr holds git command string.
-const gitStr = "git"
+var ErrUndoNotSupported = errors.New("git undo not supported")
 
 // UndoCommand represents a command that can undo a git operation.
 type UndoCommand struct {
@@ -23,6 +23,27 @@ type UndoCommand struct {
 	Warnings []string
 	// Description is a human-readable description of what the command will do
 	Description string
+
+	git GitExec
+}
+
+func NewUndoCommand(git GitExec, cmdStr string, description string, warnings ...string) *UndoCommand {
+	return &UndoCommand{
+		Command:     cmdStr,
+		Description: description,
+		Warnings:    warnings,
+		git:         git,
+	}
+}
+
+// Exec executes the undo command and returns its success status.
+func (cmd *UndoCommand) Exec() error {
+	gitCmd, err := parseGitCommand(cmd.Command)
+	if err != nil {
+		return fmt.Errorf("invalid command: %w", err)
+	}
+
+	return cmd.git.GitRun(gitCmd.SubCommand, gitCmd.Args...)
 }
 
 // Undoer represents an interface for undoing git commands.
@@ -50,19 +71,19 @@ func (d *CommandDetails) getFirstNonFlagArg() string {
 
 // parseGitCommand parses a git command string into a CommandDetails struct.
 func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
-	parts, err := shellwords.Parse(gitCmdStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse input git command: %w", err)
+	parsed := githelpers.ParseGitCommand(gitCmdStr)
+	if parsed.ValidationErr != nil {
+		return nil, fmt.Errorf("failed to parse input git command: %w", parsed.ValidationErr)
 	}
-	if len(parts) < 2 || parts[0] != gitStr {
+	if !parsed.Valid {
 		return nil, fmt.Errorf("invalid git command format: %s", gitCmdStr)
 	}
 
 	return &CommandDetails{
 		FullCommand: gitCmdStr,
-		Command:     parts[0],
-		SubCommand:  parts[1],
-		Args:        parts[2:],
+		Command:     "git",
+		SubCommand:  parsed.Name,
+		Args:        parsed.Args,
 	}, nil
 }
 
@@ -80,7 +101,7 @@ func (i *InvalidUndoer) GetUndoCommand() (*UndoCommand, error) {
 }
 
 // New returns the appropriate Undoer implementation for a git command.
-func New(cmdStr string) Undoer {
+func New(cmdStr string, gitExec GitExec) Undoer {
 	cmdDetails, err := parseGitCommand(cmdStr)
 	if err != nil {
 		return &InvalidUndoer{rawCommand: cmdStr, parseError: err}
@@ -88,45 +109,18 @@ func New(cmdStr string) Undoer {
 
 	switch cmdDetails.SubCommand {
 	case "commit":
-		return &CommitUndoer{originalCmd: cmdDetails}
+		return &CommitUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "add":
-		return &AddUndoer{originalCmd: cmdDetails}
+		return &AddUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "branch":
-		return &BranchUndoer{originalCmd: cmdDetails}
+		return &BranchUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "checkout":
-		return &CheckoutUndoer{originalCmd: cmdDetails}
+		return &CheckoutUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "stash":
-		return &StashUndoer{originalCmd: cmdDetails}
+		return &StashUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "merge":
-		return &MergeUndoer{originalCmd: cmdDetails}
+		return &MergeUndoer{originalCmd: cmdDetails, git: gitExec}
 	default:
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}
-}
-
-// ExecGitCommand executes a git command and returns its error status.
-func ExecGitCommand(subCmd string, args ...string) error {
-	cmd := exec.Command(gitStr, append([]string{subCmd}, args...)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// CheckGitOutput executes a git command and returns its output as string.
-func CheckGitOutput(args ...string) (string, error) {
-	output, err := exec.Command(gitStr, args...).Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(output)), nil
-}
-
-// ExecuteUndoCommand executes the undo command and returns its success status.
-func ExecuteUndoCommand(cmd *UndoCommand) bool {
-	gitCmd, err := parseGitCommand(cmd.Command)
-	if err != nil {
-		return false
-	}
-
-	return ExecGitCommand(gitCmd.SubCommand, gitCmd.Args...) == nil
 }

@@ -20,7 +20,7 @@ const (
 // GitTestSuite provides a test environment for git operations.
 type GitTestSuite struct {
 	testutil.GitTestSuite
-	application *app.App
+	app *app.App
 }
 
 // TestGitUndoSuite runs all git-undo related tests.
@@ -36,18 +36,20 @@ func (s *GitTestSuite) SetupTest() {
 	s.RunCmd("git", "clean", "-fdx")
 }
 
-// SetupSuite initializes the test suite and creates the application instance.
+// SetupSuite initializes the test suite and creates the app instance.
 func (s *GitTestSuite) SetupSuite() {
 	s.GitTestSuite.Verbose = verbose
 	s.GitTestSuite.GitUndoHook = autoGitUndoHook
 	s.GitTestSuite.SetupSuite()
 
-	s.application = app.New(verbose, false)
+	s.app = app.New(s.GetRepoDir(), verbose, false)
+	app.SetupInternalCall(s.app)
+	s.GitTestSuite.SetApplication(s.app)
 }
 
 // gitUndo runs git-undo with the given arguments.
 func (s *GitTestSuite) gitUndo(args ...string) {
-	err := s.application.Run(args)
+	err := s.app.Run(args)
 	s.Require().NoError(err)
 }
 
@@ -60,7 +62,7 @@ func (s *GitTestSuite) gitUndoLog() string {
 	os.Stdout = w
 
 	// Run the log command
-	err = s.application.Run([]string{"--log"})
+	err = s.app.Run([]string{"--log"})
 	// Close the writer end and restore stdout
 	_ = w.Close()
 	//nolint:reassign // TODO: fix this in future
@@ -82,10 +84,6 @@ func (s *GitTestSuite) gitUndoLog() string {
 
 // TestUndoBranch tests the branch deletion functionality.
 func (s *GitTestSuite) TestUndoBranch() {
-	s.NoError(
-		s.application.Init(testutil.NewMockGitCtrl(s.GetRepoDir())),
-	)
-
 	// Create a branch - hook is automatically simulated
 	s.Git("branch", "feature")
 	s.AssertBranchExists("feature")
@@ -181,14 +179,14 @@ func (s *GitTestSuite) TestUndoLog() {
 	s.NotEmpty(log, "Log should not be empty")
 	s.Contains(log, "git commit -m 'First commit'", "Log should contain commit command")
 	s.Contains(log, "git add test.txt", "Log should contain add command")
-	s.Contains(log, "[feature-branch]", "Log should contain branch name")
+	s.Contains(log, "|feature-branch|", "Log should contain branch name")
 
 	// Switch back to main and verify the branch name changes in the log
 	s.Git("checkout", "main")
 	s.Git("add", filepath.Base(testFile)) // Use relative path for git commands
 
 	log = s.gitUndoLog()
-	s.Contains(log, "[main]", "Log should contain updated branch name")
+	s.Contains(log, "|main|", "Log should contain updated branch name")
 }
 
 // TestUndoUndo tests the git undo undo (redo) functionality.

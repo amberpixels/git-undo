@@ -3,7 +3,6 @@ package githelpers
 import (
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/mattn/go-shellwords"
@@ -99,7 +98,8 @@ var porcelainCommands = []string{
 	"grep", "gui", "help", "init", "log", "merge", "mv", "notes",
 	"pull", "push", "rebase", "reflog", "remote", "reset", "revert",
 	"rm", "shortlog", "show", "stash", "status", "submodule", "tag",
-	"worktree", "config", "undo",
+	"worktree", "config", "restore",
+	"undo",
 }
 
 // plumbingCommands is the list of low-level plumbing verbs.
@@ -270,30 +270,4 @@ func ParseGitCommand(raw string) *GitCommand {
 		IsReadOnly:    isReadOnlyCommand(name, args),
 		ValidationErr: nil,
 	}
-}
-
-// GetCurrentRef returns the current ref (branch, tag, or commit hash) in the repository.
-// TODO tests
-func GetCurrentRef() (string, error) {
-	// Try to get branch name first
-	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
-	output, err := cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(output)), nil
-	}
-
-	// If not on a branch, try to get tag name
-	cmd = exec.Command("git", "describe", "--tags", "--exact-match")
-	output, err = cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(output)), nil
-	}
-
-	// If not on a tag, get commit hash
-	cmd = exec.Command("git", "rev-parse", "--short", "HEAD")
-	output, err = cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current ref: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
 }

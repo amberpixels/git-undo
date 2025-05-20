@@ -7,6 +7,8 @@ import (
 
 // StashUndoer handles undoing git stash operations.
 type StashUndoer struct {
+	git GitExec
+
 	originalCmd *CommandDetails
 }
 
@@ -23,14 +25,14 @@ func (s *StashUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// For stash push or plain stash, we need to pop the stash and drop it
 	// First check if we have any stashes
-	output, err := CheckGitOutput("stash", "list")
+	output, err := s.git.GitOutput("stash", "list")
 	if err != nil || strings.TrimSpace(output) == "" {
 		return nil, fmt.Errorf("no stashes found to undo")
 	}
 
 	// Pop the most recent stash and drop it
-	return &UndoCommand{
-		Command:     "git stash pop && git stash drop",
-		Description: "Pop the most recent stash and remove it",
-	}, nil
+	return NewUndoCommand(s.git,
+		"git stash pop && git stash drop",
+		"Pop the most recent stash and remove it",
+	), nil
 }

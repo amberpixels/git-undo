@@ -13,42 +13,55 @@ import (
 	"github.com/mattn/go-shellwords"
 )
 
-// GitCtrl provides methods for reading git references
-type GitCtrl interface {
+// GitHelper provides methods for reading git references
+type GitHelper interface {
 	GetCurrentGitRef() (string, error)
 	GetRepoGitDir() (string, error)
+	ValidateGitRepo() error
+
+	GitRun(subCmd string, args ...string) error
+	GitOutput(subCmd string, args ...string) (string, error)
 }
 
-// App represents the main application.
+// App represents the main app.
 type App struct {
 	verbose bool
 	dryRun  bool
-	repoDir string
 
-	gitCtrl GitCtrl
+	git GitHelper
 
 	lgr *logging.Logger
+
+	// isInternalCall is a hack, so app works OK even without GIT_UNDO_INTERNAL_HOOK env variable.
+	// So, we can run tests without setting env vars (but just via setting this flag).
+	isInternalCall bool
+}
+
+// IsInternalCall checks if the hook is being called internally (either via test or zsh script)
+func (a *App) IsInternalCall() bool {
+	if a.isInternalCall {
+		return true
+	}
+
+	val, ok := os.LookupEnv("GIT_UNDO_INTERNAL_HOOK")
+	return ok && val == "1"
 }
 
 // New creates a new App instance.
-func New(verbose, dryRun bool) *App {
+func New(repoDir string, verbose, dryRun bool) *App {
+	gitHelper := githelpers.NewGitHelper(repoDir)
+	gitDir, err := gitHelper.GetRepoGitDir()
+	if err != nil {
+		// TODO handle gentlier
+		return nil
+	}
+
 	return &App{
 		verbose: verbose,
 		dryRun:  dryRun,
-		gitCtrl: githelpers.NewGitCtrl(),
-		lgr:     logging.NewLogger(),
+		git:     gitHelper,
+		lgr:     logging.NewLogger(gitDir, gitHelper),
 	}
-}
-
-func (a *App) Init(gitCtrlArg ...githelpers.GitCtrl) error {
-	if len(gitCtrlArg) > 0 {
-		a.gitCtrl = gitCtrlArg[0]
-	}
-	if err := a.lgr.Init(a.gitCtrl); err != nil {
-		return fmt.Errorf("failed to initialize logger: %w", err)
-	}
-
-	return nil
 }
 
 // ANSI escape code for gray color.
@@ -73,19 +86,12 @@ func (a *App) logWarnf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, redColor+"git-undo ❌: "+grayColor+format+resetColor+"\n", args...)
 }
 
-// Run executes the main application logic.
+// Run executes the main app logic.
 func (a *App) Run(args []string) error {
 	a.logDebugf("called in verbose mode")
 
-	if a.repoDir != "" {
-		// change current directory to a.repoDir
-		if err := os.Chdir(a.repoDir); err != nil {
-			return fmt.Errorf("failed to change directory to %s: %w", a.repoDir, err)
-		}
-	}
-
 	// Ensure we're inside a Git repository
-	if err := githelpers.ValidateGitRepo(); err != nil {
+	if err := a.git.ValidateGitRepo(); err != nil {
 		return err
 	}
 
@@ -144,7 +150,7 @@ func (a *App) Run(args []string) error {
 	a.logDebugf("Last git command: %s", yellowColor+lastEntry.Command+resetColor)
 
 	// Get the appropriate undoer
-	u := undoer.New(lastEntry.Command)
+	u := undoer.New(lastEntry.Command, a.git)
 
 	// Get the undo command
 	undoCmd, err := u.GetUndoCommand()
@@ -163,31 +169,30 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Execute the undo command
-	if success := undoer.ExecuteUndoCommand(undoCmd); success {
-		// Mark the entry as undoed in the log
-		marked, err := a.lgr.ToggleEntry(lastEntry.GetIdentifier())
-		if err != nil {
-			a.logWarnf("Failed to mark command as undoed: %v", err)
-		} else if !marked {
-			a.logWarnf("Command was already marked as undoed")
-		}
-		a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmd.Command)
-		if len(undoCmd.Warnings) > 0 {
-			for _, warning := range undoCmd.Warnings {
-				a.logWarnf("%s", warning)
-			}
-		}
-		return nil
+	if err := undoCmd.Exec(); err != nil {
+		return fmt.Errorf("failed to execute undo command %s via %s: %w", lastEntry.Command, undoCmd.Command, err)
 	}
 
-	return fmt.Errorf("failed to execute undo command %s via %s", lastEntry.Command, undoCmd.Command)
+	// Mark the entry as undoed in the log
+	marked, err := a.lgr.ToggleEntry(lastEntry.GetIdentifier())
+	if err != nil {
+		a.logWarnf("Failed to mark command as undoed: %v", err)
+	} else if !marked {
+		a.logWarnf("Command was already marked as undoed")
+	}
+	a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmd.Command)
+	if len(undoCmd.Warnings) > 0 {
+		for _, warning := range undoCmd.Warnings {
+			a.logWarnf("%s", warning)
+		}
+	}
+	return nil
 }
 
 func (a *App) cmdHook(hookArg string) error {
 	a.logDebugf("hook: start")
 
-	val, ok := os.LookupEnv("GIT_UNDO_INTERNAL_HOOK")
-	if !ok || val != "1" {
+	if !a.IsInternalCall() {
 		return errors.New("hook must be called by the zsh script")
 	}
 

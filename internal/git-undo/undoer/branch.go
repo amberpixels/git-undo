@@ -6,6 +6,8 @@ import (
 
 // BranchUndoer handles undoing git branch operations.
 type BranchUndoer struct {
+	git GitExec
+
 	originalCmd *CommandDetails
 }
 
@@ -23,8 +25,8 @@ func (b *BranchUndoer) GetUndoCommand() (*UndoCommand, error) {
 		return nil, fmt.Errorf("no branch name found in command: %s", b.originalCmd.FullCommand)
 	}
 
-	return &UndoCommand{
-		Command:     fmt.Sprintf("git branch -D %s", branchName),
-		Description: fmt.Sprintf("Delete branch '%s'", branchName),
-	}, nil
+	return NewUndoCommand(b.git,
+		fmt.Sprintf("git branch -D %s", branchName),
+		fmt.Sprintf("Delete branch '%s'", branchName),
+	), nil
 }

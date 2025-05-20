@@ -7,6 +7,8 @@ import (
 
 // AddUndoer handles undoing git add operations.
 type AddUndoer struct {
+	git GitExec
+
 	originalCmd *CommandDetails
 }
 
@@ -28,10 +30,7 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// If --all flag was used or no specific files, unstage everything
 	if hasAllFlag || len(a.originalCmd.Args) == 0 {
-		return &UndoCommand{
-			Command:     "git restore --staged .",
-			Description: "Unstage all files",
-		}, nil
+		return NewUndoCommand(a.git, "git restore --staged .", "Unstage all files"), nil
 	}
 
 	// For other cases, filter out flags and only pass real file paths to restore
@@ -45,14 +44,12 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// If we only had flags but no files, default to restoring everything
 	if len(filesToRestore) == 0 {
-		return &UndoCommand{
-			Command:     "git restore --staged .",
-			Description: "Unstage all files",
-		}, nil
+		return NewUndoCommand(a.git, "git restore --staged .", "Unstage all files"), nil
 	}
 
-	return &UndoCommand{
-		Command:     fmt.Sprintf("git restore --staged %s", strings.Join(filesToRestore, " ")),
-		Description: fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
-	}, nil
+	return NewUndoCommand(
+		a.git,
+		fmt.Sprintf("git restore --staged %s", strings.Join(filesToRestore, " ")),
+		fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
+	), nil
 }

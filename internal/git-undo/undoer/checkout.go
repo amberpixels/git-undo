@@ -6,6 +6,8 @@ import (
 
 // CheckoutUndoer handles undoing git checkout operations.
 type CheckoutUndoer struct {
+	git GitExec
+
 	originalCmd *CommandDetails
 }
 
@@ -15,10 +17,10 @@ func (c *CheckoutUndoer) GetUndoCommand() (*UndoCommand, error) {
 	for i, arg := range c.originalCmd.Args {
 		if (arg == "-b" || arg == "--branch") && i+1 < len(c.originalCmd.Args) {
 			branchName := c.originalCmd.Args[i+1]
-			return &UndoCommand{
-				Command:     fmt.Sprintf("git branch -D %s", branchName),
-				Description: fmt.Sprintf("Delete branch '%s' created by checkout -b", branchName),
-			}, nil
+			return NewUndoCommand(c.git,
+				fmt.Sprintf("git branch -D %s", branchName),
+				fmt.Sprintf("Delete branch '%s' created by checkout -b", branchName),
+			), nil
 		}
 	}
 
