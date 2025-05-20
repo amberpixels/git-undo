@@ -1,6 +1,7 @@
 package undoer
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -27,7 +28,7 @@ func (s *StashUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// First check if we have any stashes
 	output, err := s.git.GitOutput("stash", "list")
 	if err != nil || strings.TrimSpace(output) == "" {
-		return nil, fmt.Errorf("no stashes found to undo")
+		return nil, errors.New("no stashes found to undo")
 	}
 
 	// Pop the most recent stash and drop it

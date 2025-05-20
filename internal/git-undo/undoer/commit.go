@@ -15,7 +15,6 @@ type CommitUndoer struct {
 
 // GetUndoCommand returns the command that would undo the commit.
 func (c *CommitUndoer) GetUndoCommand() (*UndoCommand, error) {
-
 	if err := c.git.GitRun("rev-parse", "HEAD^{commit}"); err != nil {
 		return nil, errors.New("this appears to be the initial commit and cannot be undone this way")
 	}

@@ -1,7 +1,7 @@
 package undoer
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -28,13 +28,14 @@ func (m *MergeUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Check if ORIG_HEAD exists (it should for a merge)
 	_, err = m.git.GitOutput("rev-parse", "--verify", "ORIG_HEAD")
 	if err != nil {
-		return nil, fmt.Errorf("ORIG_HEAD not found, cannot safely undo merge")
+		return nil, errors.New("ORIG_HEAD not found, cannot safely undo merge")
 	}
 
 	// Check if this was a fast-forward merge
 	// We can detect this by checking if HEAD has multiple parents
-	if err := m.git.GitRun("rev-parse", "-q", "--verify", "HEAD^2"); err != nil {
+	if fastForwardMergeErr := m.git.GitRun("rev-parse", "-q", "--verify", "HEAD^2"); fastForwardMergeErr != nil {
 		// For fast-forward merges, we can just reset to ORIG_HEAD
+		//nolint:nilerr // it's OK here
 		return NewUndoCommand(m.git,
 			"git reset --hard ORIG_HEAD",
 			"Undo fast-forward merge by resetting to ORIG_HEAD",

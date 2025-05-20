@@ -37,7 +37,7 @@ func (h *H) execGitOutput(subCmd string, args ...string) (string, error) {
 	gitArgs := append([]string{subCmd}, args...)
 	cmd := exec.Command("git", gitArgs...)
 	if h.repoDir == invalidRepoDir {
-		return "", fmt.Errorf("not a valid git repository")
+		return "", errors.New("not a valid git repository")
 	}
 
 	cmd.Dir = h.repoDir
@@ -55,7 +55,7 @@ func (h *H) execGitRun(subCmd string, args ...string) error {
 	gitArgs := append([]string{subCmd}, args...)
 	cmd := exec.Command("git", gitArgs...)
 	if h.repoDir == invalidRepoDir {
-		return fmt.Errorf("not a valid git repository")
+		return errors.New("not a valid git repository")
 	}
 
 	cmd.Dir = h.repoDir
@@ -80,7 +80,7 @@ func (h *H) GetCurrentGitRef() (string, error) {
 		return ref, nil
 	}
 
-	return "", fmt.Errorf("failed to get current ref")
+	return "", errors.New("failed to get current ref")
 }
 
 // GetRepoGitDir returns the path to the .git directory of current repository.

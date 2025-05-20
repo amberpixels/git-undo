@@ -32,7 +32,7 @@ const (
 	logFileName        = "commands"
 )
 
-// Entry represents a logged git command with its full identifier
+// Entry represents a logged git command with its full identifier.
 type Entry struct {
 	// Timestamp is parsed timestamp of the entry.
 	Timestamp time.Time
@@ -45,13 +45,13 @@ type Entry struct {
 	Undoed bool
 }
 
-// GetIdentifier returns full command without sign of undoed state (# prefix)
+// GetIdentifier returns full command without sign of undoed state (# prefix).
 func (e *Entry) GetIdentifier() string {
 	return strings.TrimPrefix(e.String(), "#")
 }
 
 // String returns a human-readable representation of the entry.
-// This representation goes into the log file as well
+// This representation goes into the log file as well.
 func (e *Entry) String() string {
 	text, _ := e.MarshalText()
 	return string(text)
@@ -72,8 +72,11 @@ func (e *Entry) UnmarshalText(data []byte) error {
 		e.Undoed = true
 	}
 
-	parts := strings.SplitN(entryString, "|", 3)
-	if len(parts) != 3 {
+	// nMustParts = 3 for date, ref, cmd
+	const nMustParts = 3
+
+	parts := strings.SplitN(entryString, "|", nMustParts)
+	if len(parts) != nMustParts {
 		return fmt.Errorf("invalid log entry format: %s", entryString)
 	}
 	var err error
@@ -88,13 +91,13 @@ func (e *Entry) UnmarshalText(data []byte) error {
 	return nil
 }
 
-// EntryType specifies whether to look for regular or undoed entries
+// EntryType specifies whether to look for regular or undoed entries.
 type EntryType int
 
 const (
-	// RegularEntry represents a normal, non-undoed entry
+	// RegularEntry represents a normal, non-undoed entry.
 	RegularEntry EntryType = iota
-	// UndoedEntry represents an entry that has been marked as undoed
+	// UndoedEntry represents an entry that has been marked as undoed.
 	UndoedEntry
 )
 
@@ -138,7 +141,7 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	}).String())
 }
 
-// GetLogPath returns the path to the log file
+// GetLogPath returns the path to the log file.
 func (l *Logger) GetLogPath() string { return l.logFile }
 
 // ToggleEntry toggles the undo state of an entry by adding or removing the "#" prefix.
@@ -329,7 +332,7 @@ func (l *Logger) readLogFile() ([]byte, error) {
 	var content []byte
 	if _, err := os.Stat(l.logFile); os.IsNotExist(err) {
 		// let's create the file instead
-		if err := os.WriteFile(l.logFile, []byte{}, 0644); err != nil {
+		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
 			return nil, fmt.Errorf("failed to create log file: %w", err)
 		}
 
@@ -349,7 +352,7 @@ func (l *Logger) readLogFile() ([]byte, error) {
 }
 
 // parseLogLine parses a log line into an Entry.
-// Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}
+// Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}.
 func parseLogLine(line string, isUndoed bool) (*Entry, error) {
 	// If the line is marked as undoed, remove the # prefix
 	if isUndoed {

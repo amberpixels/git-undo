@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockGitRefSwitcher implements GitHelper for testing ref switching
+// MockGitRefSwitcher implements GitHelper for testing ref switching.
 type MockGitRefSwitcher struct {
 	currentRef string
 }
@@ -22,7 +22,6 @@ func (m *MockGitRefSwitcher) GetCurrentGitRef() (string, error) {
 
 func (m *MockGitRefSwitcher) SwitchRef(ref string) {
 	m.currentRef = ref
-	return
 }
 
 func NewMockGitHelper() *MockGitRefSwitcher {
@@ -37,8 +36,7 @@ func SwitchRef(gh logging.GitHelper, ref string) {
 
 func TestLogger_E2E(t *testing.T) {
 	// 1. Create a brand-new sandbox
-	tmpGitUndoDir, err := os.MkdirTemp("", "gitundo-test-*")
-	require.NoError(t, err)
+	tmpGitUndoDir := t.TempDir()
 	defer func() {
 		_ = os.RemoveAll(tmpGitUndoDir)
 	}()
@@ -70,7 +68,7 @@ func TestLogger_E2E(t *testing.T) {
 
 	// Verify log file exists and has content
 	logFile := lgr.GetLogPath()
-	_, err = os.Stat(logFile)
+	_, err := os.Stat(logFile)
 	require.NoError(t, err)
 
 	// 2.1. Read all log entries

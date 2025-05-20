@@ -13,7 +13,7 @@ import (
 	"github.com/mattn/go-shellwords"
 )
 
-// GitHelper provides methods for reading git references
+// GitHelper provides methods for reading git references.
 type GitHelper interface {
 	GetCurrentGitRef() (string, error)
 	GetRepoGitDir() (string, error)
@@ -37,7 +37,7 @@ type App struct {
 	isInternalCall bool
 }
 
-// IsInternalCall checks if the hook is being called internally (either via test or zsh script)
+// IsInternalCall checks if the hook is being called internally (either via test or zsh script).
 func (a *App) IsInternalCall() bool {
 	if a.isInternalCall {
 		return true
@@ -119,7 +119,7 @@ func (a *App) Run(args []string) error {
 			return fmt.Errorf("failed to unmark command: %w", err)
 		}
 		if marked {
-			return fmt.Errorf("command was unexpectedly marked as undoed")
+			return errors.New("command was unexpectedly marked as undoed")
 		}
 
 		// Execute the original command

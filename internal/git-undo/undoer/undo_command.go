@@ -87,7 +87,7 @@ func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
 	}, nil
 }
 
-// InvalidUndoer represents an undoer for commands that cannot be parsed or are not supported
+// InvalidUndoer represents an undoer for commands that cannot be parsed or are not supported.
 type InvalidUndoer struct {
 	rawCommand string
 	parseError error

@@ -279,16 +279,16 @@ func (s *GitTestSuite) TestUndoMerge() {
 
 	// Verify both files exist
 	_, err = os.Stat(testFile)
-	s.NoError(err, "Feature file should exist after merge")
+	s.Require().NoError(err, "Feature file should exist after merge")
 	_, err = os.Stat(mainFile)
-	s.NoError(err, "Main file should exist after merge")
+	s.Require().NoError(err, "Main file should exist after merge")
 
 	// Run undo
 	s.gitUndo()
 
 	// Verify feature file no longer exists in working directory
 	_, err = os.Stat(testFile)
-	s.Error(err, "Feature file should not exist after undoing merge")
+	s.Require().Error(err, "Feature file should not exist after undoing merge")
 	_, err = os.Stat(mainFile)
-	s.NoError(err, "Main file should still exist after undoing merge")
+	s.Require().NoError(err, "Main file should still exist after undoing merge")
 }
