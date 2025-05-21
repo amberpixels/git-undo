@@ -1,7 +1,7 @@
 package logging
 
 import (
-	"errors"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +31,21 @@ const (
 	logFileDirName     = "git-undo"
 	logFileName        = "commands"
 )
+
+// EntryType specifies whether to look for regular or undoed entries.
+type EntryType int
+
+const (
+	// RegularEntry represents a normal, non-undoed entry.
+	RegularEntry EntryType = iota
+	// UndoedEntry represents an entry that has been marked as undoed.
+	UndoedEntry
+)
+
+// String returns the string representation of the EntryType.
+func (et EntryType) String() string {
+	return [...]string{"regular", "undoed"}[et]
+}
 
 // Entry represents a logged git command with its full identifier.
 type Entry struct {
@@ -91,20 +106,9 @@ func (e *Entry) UnmarshalText(data []byte) error {
 	return nil
 }
 
-// EntryType specifies whether to look for regular or undoed entries.
-type EntryType int
-
-const (
-	// RegularEntry represents a normal, non-undoed entry.
-	RegularEntry EntryType = iota
-	// UndoedEntry represents an entry that has been marked as undoed.
-	UndoedEntry
-)
-
-// String returns the string representation of the EntryType.
-func (et EntryType) String() string {
-	return [...]string{"regular", "undoed"}[et]
-}
+// lineProcessor is a function that processes each line of the log file.
+// If it returns false, file reading stops.
+type lineProcessor func(line string) (continueReading bool)
 
 // NewLogger creates a new Logger instance.
 func NewLogger(repoGitDir string, git GitHelper) *Logger {
@@ -152,56 +156,31 @@ func (l *Logger) GetLogPath() string { return l.logFile }
 // ToggleEntry toggles the undo state of an entry by adding or removing the "#" prefix.
 // The entryIdentifier should be in the format "TIMESTAMP|REF|COMMAND" (without the # prefix).
 // Returns true if the entry was marked as undoed, false if it was unmarked.
-func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
+func (l *Logger) ToggleEntry(entryIdentifier string) error {
 	if l.err != nil {
-		return false, fmt.Errorf("logger is not healthy: %w", l.err)
+		return fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	content, err := l.readLogFile()
+	var foundLineIdx int
+	err := l.processLogFile(func(line string) bool {
+		if strings.TrimSpace(strings.TrimLeft(line, "#")) == entryIdentifier {
+			return false
+		}
+
+		foundLineIdx++
+		return true
+	})
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	lines := strings.Split(string(content), "\n")
-	if len(lines) == 0 {
-		return false, errors.New("log file is empty")
+	file, err := os.OpenFile(l.logFile, os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
 	}
+	defer file.Close()
 
-	// Find the line that matches our entry identifier
-	found := false
-	wasMarked := false
-	for i := range lines {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// Check if this line matches our entry identifier
-		// For marked entries, we need to check without the # prefix
-		if line == entryIdentifier {
-			lines[i] = "#" + line
-			wasMarked = true
-			found = true
-			break
-		} else if strings.HasPrefix(line, "#") && line[1:] == entryIdentifier {
-			// Entry was marked, unmark it
-			lines[i] = line[1:]
-			wasMarked = false
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return false, fmt.Errorf("entry not found in log: %s", entryIdentifier)
-	}
-
-	// Write the modified content back to the file
-	if err := os.WriteFile(l.logFile, []byte(strings.Join(lines, "\n")), 0600); err != nil {
-		return false, err
-	}
-
-	return wasMarked, nil
+	return toggleLine(file, foundLineIdx)
 }
 
 // GetLastEntry returns either the last regular entry or the last undoed entry based on the entryType.
@@ -227,45 +206,77 @@ func (l *Logger) GetLastEntry(entryType EntryType, refArg ...string) (*Entry, er
 		ref = refArg[0]
 	}
 
-	content, err := l.readLogFile()
-	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
-	// Find the first non-empty line that matches our criteria
-	for i := range lines {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-
-		// let's preparse to know if it's undoed or not
+	var foundEntry *Entry
+	err := l.processLogFile(func(line string) bool {
+		// Check if this line is undoed (starts with #)
 		isUndoed := strings.HasPrefix(line, "#")
 
 		// Skip if we're looking for the wrong type
 		if (entryType == RegularEntry && isUndoed) ||
 			(entryType == UndoedEntry && !isUndoed) {
-			continue
+			return true
 		}
 
 		// Parse the log line into an Entry
 		entry, err := parseLogLine(line)
 		if err != nil {
-			// TODO: in debug mode print the warning out
-			continue // Skip malformed lines
+			// Skip malformed lines
+			return true
 		}
 
-		// Check reference if specified
+		// Check reference if specified and not "any"
 		if ref != "" && entry.Ref != ref {
-			continue // Skip entries from different references
+			return true
 		}
 
-		return entry, nil
+		// Found a matching entry!
+		foundEntry = entry
+		return false
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, fmt.Errorf("no %s command found in log for reference [ref=%s]", entryType, ref)
+	if foundEntry == nil {
+		return nil, fmt.Errorf("no %s command found in log for reference [ref=%s]", entryType, ref)
+	}
+
+	return foundEntry, nil
+}
+
+// Dump reads the log file content and writes it directly to the provided writer.
+func (l *Logger) Dump(w io.Writer) error {
+	if l.err != nil {
+		return fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	// Check if file exists
+	_, err := os.Stat(l.logFile)
+	if os.IsNotExist(err) {
+		// File doesn't exist, create an empty one
+		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
+			return fmt.Errorf("failed to create log file: %w", err)
+		}
+		// Nothing to dump (file is empty)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to check log file status: %w", err)
+	}
+
+	// Open the file for reading
+	file, err := os.Open(l.logFile)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// Copy directly from file to writer
+	_, err = io.Copy(w, file)
+	if err != nil {
+		return fmt.Errorf("failed to dump log file: %w", err)
+	}
+
+	return nil
 }
 
 // prependLogEntry prepends a new line into the log file.
@@ -311,32 +322,56 @@ func (l *Logger) prependLogEntry(entry string) error {
 	return nil
 }
 
-// readLogFile reads the content of the log file.
-func (l *Logger) readLogFile() ([]byte, error) {
+// processLogFile reads the log file line by line and calls the processor function for each line.
+// This is more efficient than reading the entire file at once, especially when only
+// the first few lines are needed.
+func (l *Logger) processLogFile(processor lineProcessor) error {
 	if l.err != nil {
-		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+		return fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	var content []byte
-	if _, err := os.Stat(l.logFile); os.IsNotExist(err) {
-		// let's create the file instead
+	// Check if the file exists
+	_, err := os.Stat(l.logFile)
+	if os.IsNotExist(err) {
+		// Create the file if it doesn't exist
 		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
-			return nil, fmt.Errorf("failed to create log file: %w", err)
+			return fmt.Errorf("failed to create log file: %w", err)
 		}
 
-		content = []byte{}
-	} else {
-		if content, err = os.ReadFile(l.logFile); err != nil {
-			return nil, fmt.Errorf("failed to read log file: %w", err)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to check log file status: %w", err)
+	}
+
+	// Open the file for reading
+	file, err := os.Open(l.logFile)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer file.Close()
+
+	// Create a scanner to read line by line
+	scanner := bufio.NewScanner(file)
+
+	// Process each line
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Call the processor function and check if we should continue
+		if !processor(line) {
+			break
 		}
 	}
 
-	// trim last line break
-	if len(content) > 0 && content[len(content)-1] == '\n' {
-		content = content[:len(content)-1]
+	// Check for any scanner errors
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading log file: %w", err)
 	}
 
-	return content, nil
+	return nil
 }
 
 // parseLogLine parses a log line into an Entry.

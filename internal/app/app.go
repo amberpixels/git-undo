@@ -118,12 +118,8 @@ func (a *App) Run(args []string) error {
 		}
 
 		// Unmark the entry in the log
-		marked, err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier())
-		if err != nil {
+		if err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier()); err != nil {
 			return fmt.Errorf("failed to unmark command: %w", err)
-		}
-		if marked {
-			return errors.New("command was unexpectedly marked as undoed")
 		}
 
 		// Execute the original command
@@ -178,12 +174,10 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Mark the entry as undoed in the log
-	marked, err := a.lgr.ToggleEntry(lastEntry.GetIdentifier())
-	if err != nil {
+	if err := a.lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
 		a.logWarnf("Failed to mark command as undoed: %v", err)
-	} else if !marked {
-		a.logWarnf("Command was already marked as undoed")
 	}
+
 	a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmd.Command)
 	if len(undoCmd.Warnings) > 0 {
 		for _, warning := range undoCmd.Warnings {
@@ -226,21 +220,5 @@ func (a *App) cmdHook(hookArg string) error {
 
 // cmdLog displays the git-undo command log.
 func (a *App) cmdLog() error {
-	// Get the log file path
-	logFile := a.lgr.GetLogPath()
-
-	// Check if log file exists
-	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		return errors.New("no command log found. Run some git commands first")
-	}
-
-	// Read and display the log file
-	content, err := os.ReadFile(logFile)
-	if err != nil {
-		return fmt.Errorf("failed to read log file: %w", err)
-	}
-
-	// Print the log content
-	fmt.Fprintf(os.Stdout, "%s", string(content))
-	return nil
+	return a.lgr.Dump(os.Stdout)
 }
