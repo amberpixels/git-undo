@@ -101,6 +101,11 @@ const (
 	UndoedEntry
 )
 
+// String returns the string representation of the EntryType.
+func (et EntryType) String() string {
+	return [...]string{"regular", "undoed"}[et]
+}
+
 // NewLogger creates a new Logger instance.
 func NewLogger(repoGitDir string, git GitHelper) *Logger {
 	lgr := &Logger{git: git}
@@ -199,11 +204,11 @@ func (l *Logger) ToggleEntry(entryIdentifier string) (bool, error) {
 	return wasMarked, nil
 }
 
-// GetEntry returns either the last regular entry or the last undoed entry based on the entryType.
+// GetLastEntry returns either the last regular entry or the last undoed entry based on the entryType.
 // If a reference is provided in refArg, only entries from that specific reference are considered.
 // If no reference is provided, uses the current reference (branch/tag/commit).
 // Use "any" as refArg to match any reference.
-func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error) {
+func (l *Logger) GetLastEntry(entryType EntryType, refArg ...string) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
 	}
@@ -218,14 +223,8 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 			return nil, fmt.Errorf("failed to get current ref: %w", err)
 		}
 		ref = currentRef
-	case 1:
-		if refArg[0] == "any" {
-			ref = "" // Empty ref means match any
-		} else {
-			ref = refArg[0]
-		}
 	default:
-		return nil, errors.New("too many reference arguments provided")
+		ref = refArg[0]
 	}
 
 	content, err := l.readLogFile()
@@ -242,6 +241,7 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 			continue
 		}
 
+		// let's preparse to know if it's undoed or not
 		isUndoed := strings.HasPrefix(line, "#")
 
 		// Skip if we're looking for the wrong type
@@ -251,7 +251,7 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 		}
 
 		// Parse the log line into an Entry
-		entry, err := parseLogLine(line, isUndoed)
+		entry, err := parseLogLine(line)
 		if err != nil {
 			// TODO: in debug mode print the warning out
 			continue // Skip malformed lines
@@ -265,20 +265,7 @@ func (l *Logger) GetEntry(entryType EntryType, refArg ...string) (*Entry, error)
 		return entry, nil
 	}
 
-	var typeStr string
-	switch entryType {
-	case RegularEntry:
-		typeStr = "regular"
-	case UndoedEntry:
-		typeStr = "undoed"
-	default:
-		return nil, errors.New("invalid entry type")
-	}
-
-	if ref != "" {
-		return nil, fmt.Errorf("no %s command found in log for reference [%s]", typeStr, ref)
-	}
-	return nil, fmt.Errorf("no %s command found in log", typeStr)
+	return nil, fmt.Errorf("no %s command found in log for reference [ref=%s]", entryType, ref)
 }
 
 // prependLogEntry prepends a new line into the log file.
@@ -305,7 +292,8 @@ func (l *Logger) prependLogEntry(entry string) error {
 	in, err := os.Open(l.logFile)
 	switch {
 	case err == nil:
-		defer in.Close()
+		defer func() { _ = in.Close() }()
+
 		if _, err := io.Copy(out, in); err != nil {
 			return fmt.Errorf("failed to copy existing log content: %w", err)
 		}
@@ -353,16 +341,11 @@ func (l *Logger) readLogFile() ([]byte, error) {
 
 // parseLogLine parses a log line into an Entry.
 // Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}.
-func parseLogLine(line string, isUndoed bool) (*Entry, error) {
-	// If the line is marked as undoed, remove the # prefix
-	if isUndoed {
-		line = line[1:]
-	}
-
-	entry := &Entry{}
+func parseLogLine(line string) (*Entry, error) {
+	var entry Entry
 	if err := entry.UnmarshalText([]byte(line)); err != nil {
 		return nil, fmt.Errorf("invalid log line format: %s", line)
 	}
 
-	return entry, nil
+	return &entry, nil
 }

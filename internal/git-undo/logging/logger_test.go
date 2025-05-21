@@ -81,7 +81,7 @@ func TestLogger_E2E(t *testing.T) {
 	// 2.2 Get latest entry from feature/test branch
 	t.Log("Getting latest entry from feature/test...")
 	SwitchRef(mgc, "feature/test")
-	entry, err := lgr.GetEntry(logging.RegularEntry)
+	entry, err := lgr.GetLastEntry(logging.RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, commands[4].cmd, entry.Command)
 	assert.Equal(t, "feature/test", entry.Ref)
@@ -94,7 +94,7 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 4. Get the latest undoed entry
 	t.Log("Getting latest undoed entry...")
-	undoedEntry, err := lgr.GetEntry(logging.UndoedEntry)
+	undoedEntry, err := lgr.GetLastEntry(logging.UndoedEntry)
 	require.NoError(t, err)
 	assert.Equal(t, entry.Command, undoedEntry.Command)
 	assert.Equal(t, entry.Ref, undoedEntry.Ref)
@@ -109,17 +109,18 @@ func TestLogger_E2E(t *testing.T) {
 	t.Log("Getting latest entry from main branch...")
 	SwitchRef(mgc, "main")
 
-	mainEntry, err := lgr.GetEntry(logging.RegularEntry)
+	mainEntry, err := lgr.GetLastEntry(logging.RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, commands[1].cmd, mainEntry.Command)
 	assert.Equal(t, "main", mainEntry.Ref)
 
 	// 7. Test entry parsing
 	t.Log("Testing entry parsing...")
-	parsedEntry, err := logging.ParseLogLine(mainEntry.GetIdentifier(), false)
+	parsedEntry, err := logging.ParseLogLine(mainEntry.GetIdentifier())
 	require.NoError(t, err)
 	assert.Equal(t, mainEntry.Command, parsedEntry.Command)
 	assert.Equal(t, mainEntry.Ref, parsedEntry.Ref)
+	assert.False(t, parsedEntry.Undoed)
 	assert.WithinDuration(t, time.Now(), parsedEntry.Timestamp, 24*time.Hour)
 
 	// 8. Test git undo command (should be skipped)
@@ -127,7 +128,7 @@ func TestLogger_E2E(t *testing.T) {
 	err = lgr.LogCommand("git undo")
 	require.NoError(t, err)
 	// Get latest entry - should still be the previous one
-	latestEntry, err := lgr.GetEntry(logging.RegularEntry)
+	latestEntry, err := lgr.GetLastEntry(logging.RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, mainEntry.Command, latestEntry.Command)
 }

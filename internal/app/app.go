@@ -108,9 +108,13 @@ func (a *App) Run(args []string) error {
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
 		// Get the last undoed entry (from current reference)
-		lastUndoedEntry, err := a.lgr.GetEntry(logging.UndoedEntry)
+		lastUndoedEntry, err := a.lgr.GetLastEntry(logging.UndoedEntry)
 		if err != nil {
-			return fmt.Errorf("no command to redo: %w", err)
+			// if not found, that's OK, let's silently ignore
+			if a.verbose {
+				a.logWarnf("No command to redo: %v", err)
+			}
+			return nil
 		}
 
 		// Unmark the entry in the log
@@ -141,7 +145,7 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Get the last git command
-	lastEntry, err := a.lgr.GetEntry(logging.RegularEntry)
+	lastEntry, err := a.lgr.GetLastEntry(logging.RegularEntry)
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
