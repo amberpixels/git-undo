@@ -1,127 +1,132 @@
-# git-undo
+# git-undo ⏪✨
 
-A Git plugin to undo the previous git command like it was never executed.
+*A universal “Ctrl + Z” for Git commands.* 🔄
 
-## Overview
+`git-undo` tracks every mutating Git command you run and can roll it back with a single `git undo` 🚀  
+No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
 
-`git-undo` reads your git command history (stored per repository) and performs the appropriate reverse operation to undo the effects of the last command. It's like a general-purpose "undo" button for git operations.
+---
 
-## Supported Commands
+## Table of Contents
+1. [Introduction](#introduction)
+2. [Features](#features)
+3. [Installation](#installation)
+   - [cURL one‑liner](#curl-one-liner-preferred)
+   - [Manual clone](#manual-clone)
+   - [Shell‑hook integration](#shell-hook-integration)
+4. [Quick Start](#quick-start)
+5. [Usage](#usage)
+6. [Supported Git Commands](#supported-git-commands)
+7. [Examples](#examples)
+8. [Development & Testing](#development--testing)
+9. [Contributing & Feedback](#contributing--feedback)
+10. [License](#license)
 
-Currently, `git-undo` can revert the following commands:
+---
 
-1. **git commit** - Reverts the commit while keeping the changes staged
-2. **git add** - Unstages files that were added
-3. **git branch** - Deletes a newly created branch
-4. **git stash** - Restores stashed changes and removes the stash entry
+## Introduction
+`git-undo` makes destructive Git operations painless to reverse.  
+It records each mutating command (commit, add, merge, stash, …) per‑repository in a tiny log file inside `.git/git-undo/`, 
+then generates the matching *anti‑command* when you call **`git undo`**.
+
+## Features
+- **One‑shot undo** for commits, adds, branches, stashes, merges, and more.
+- **Sequential undo / redo** - walk backward *or* forward through history.
+- Verbose & dry‑run modes for full transparency.
+- Per‑repository command log you can inspect or clear at any time.
 
 ## Installation
 
 ### Prerequisites
+* Git
+* Go ≥ 1.21 (auto‑upgrades to 1.24 via Go toolchain)
+* ZSH shell (other shells coming soon)
 
-- Git (obviously)
-- Go 1.21 or newer (for building the binary)
-- ZSH shell (In future we'll support other shells)
-
-### cURL method (Preferred)
+### cURL one‑liner *(preferred)*
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/amberpixels/git-undo/main/install.sh | bash
 ```
 
-### Manual method
-
+### Manual clone
 ```bash
 git clone https://github.com/amberpixels/git-undo.git
 cd git-undo
 ./install.sh
 ```
 
+### Shell‑hook integration
+The installer drops [`scripts/git-undo-hook.zsh`](scripts/git-undo-hook.zsh) into `~/.config/git-undo/`
+and appends a `source` line to your `.zshrc`, so every successful Git command is logged automatically.
+
+---
+
+## Quick Start
+```bash
+git commit -m "oops"  # commit, then regret it
+git undo              # resets to HEAD~1, keeps changes staged (like Ctrl+Z)
+```
+
+Need the commit back?
+```bash
+git undo undo      # redo last undo (like Ctrl+Shift+Z)
+```
+
+---
 
 ## Usage
+| Command              | Effect                                            |
+|----------------------|---------------------------------------------------|
+| `git undo`           | Roll back the last mutating Git command           |
+| `git undo undo`      | Re-roll back the last undoed command              |
+| `git undo --verbose` | Show the generated inverse command before running |
+| `git undo --dry-run` | Print what *would* be executed, do nothing        |
+| `git undo --log`     | Dump your logged command history                  |
 
-After performing a git command that you want to undo, simply run:
+---
 
-```bash
-git undo
-```
+## Supported Git Commands
+* `commit`
+* `add`
+* `branch`
+* `stash push`
+* `merge`
+* `checkout -b`
+* More on the way—PRs welcome!
 
-For verbose mode, which shows more information about what's happening:
-
-```bash
-git undo --verbose
-```
-
-To view the history of git commands that can be undone:
-
-```bash
-git undo --log
-```
-
-## Recommendations on aliases
-
-We recommend adding the following aliases to your `.zhsrc` file:
-
-```bash
-alias gu="git undo"
-alias guu="git undo undo" # works as Ctrl+Shift+Z, so undoing the undo.
-alias gul="git undo --log"
-```
+---
 
 ## Examples
+Undo a merge commit:
+```bash
+git merge feature/main
+git undo          # resets --merge ORIG_HEAD
+```
 
-1. Undo a commit:
+Undo adding specific files:
+```bash
+git add file1.go file2.go
+git undo          # unstages file1.go file2.go
+```
 
-   ```bash
-   git commit -m "Some message"
-   git undo  # This will undo the commit
-   ```
+---
 
-2. Undo adding files:
+## Development & Testing
+```bash
+make tidy      # fmt, vet, mod tidy
+make test      # unit tests
+make lint      # golangci‑lint
+make build     # compile to ./build/git-undo
+make install   # installs Go binary and adds zsh hook
+```
+---
 
-   ```bash
-   git add file1.txt file2.txt
-   git undo  # This will unstage file1.txt and file2.txt
-   ```
+## Contributing & Feedback
+Spotted a bug or missing undo case?  
+Opening an issue or PR makes the tool better for everyone.  
+If `git-undo` saved your bacon, please **star the repo** and share suggestions!
 
-3. Undo creating a branch:
-
-   ```bash
-   git branch new-feature
-   git undo  # This will delete the new-feature branch
-   ```
-
-4. Sequential undo operations:
-
-   ```bash
-   git add file1.txt
-   git commit -m "First commit"
-   git add file2.txt
-   git commit -m "Second commit"
-   git undo  # This will undo the second commit
-   git undo  # This will undo the first commit
-   git undo  # This will unstage file1.txt
-   ```
-
-5. Undo stashing changes:
-
-   ```bash
-   git add file1.txt
-   git stash  # Stash the staged changes
-   git undo   # This will restore the changes and remove the stash entry
-   ```
-
-## Features
-
-- Undo the most recent git command
-- Sequential undo operations (undo multiple commands in reverse order)
-- Command history tracking with visual indicators for undoed commands
-- Support for common git operations (commit, add, branch)
-
-## Limitations _for now:_
-
-- Some complex operations might not be fully reversible
+---
 
 ## License
-
 [MIT](LICENSE)
