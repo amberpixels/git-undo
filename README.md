@@ -59,8 +59,10 @@ and appends a `source` line to your `.zshrc`, so every successful Git command is
 
 ## Quick Start
 ```bash
+git add .
 git commit -m "oops"  # commit, then regret it
 git undo              # resets to HEAD~1, keeps changes staged (like Ctrl+Z)
+git undo              # undoes `git add .` as well
 ```
 
 Need the commit back?
