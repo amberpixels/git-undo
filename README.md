@@ -5,8 +5,6 @@
 `git-undo` tracks every mutating Git command you run and can roll it back with a single `git undo` 🚀  
 No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
 
----
-
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Features](#features)
@@ -59,8 +57,6 @@ cd git-undo
 The installer drops [`scripts/git-undo-hook.zsh`](scripts/git-undo-hook.zsh) into `~/.config/git-undo/`
 and appends a `source` line to your `.zshrc`, so every successful Git command is logged automatically.
 
----
-
 ## Quick Start
 ```bash
 git commit -m "oops"  # commit, then regret it
@@ -72,8 +68,6 @@ Need the commit back?
 git undo undo      # redo last undo (like Ctrl+Shift+Z)
 ```
 
----
-
 ## Usage
 | Command              | Effect                                            |
 |----------------------|---------------------------------------------------|
@@ -83,7 +77,6 @@ git undo undo      # redo last undo (like Ctrl+Shift+Z)
 | `git undo --dry-run` | Print what *would* be executed, do nothing        |
 | `git undo --log`     | Dump your logged command history                  |
 
----
 
 ## Supported Git Commands
 * `commit`
@@ -93,8 +86,6 @@ git undo undo      # redo last undo (like Ctrl+Shift+Z)
 * `merge`
 * `checkout -b`
 * More on the way—PRs welcome!
-
----
 
 ## Examples
 Undo a merge commit:
@@ -109,8 +100,6 @@ git add file1.go file2.go
 git undo          # unstages file1.go file2.go
 ```
 
----
-
 ## Development & Testing
 ```bash
 make tidy      # fmt, vet, mod tidy
@@ -119,14 +108,10 @@ make lint      # golangci‑lint
 make build     # compile to ./build/git-undo
 make install   # installs Go binary and adds zsh hook
 ```
----
-
 ## Contributing & Feedback
 Spotted a bug or missing undo case?  
 Opening an issue or PR makes the tool better for everyone.  
 If `git-undo` saved your bacon, please **star the repo** and share suggestions!
-
----
 
 ## License
 [MIT](LICENSE)
