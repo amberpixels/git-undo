@@ -19,19 +19,24 @@ Currently, `git-undo` can revert the following commands:
 
 ### Prerequisites
 
-- Go 1.18 or newer
-- Git
-- ZSH shell
+- Git (obviously)
+- Go 1.21 or newer (for building the binary)
+- ZSH shell (In future we'll support other shells)
 
-### Install
+### cURL method (Preferred)
 
-  ```bash
-  git clone https://github.com/amberpixels/git-undo.git
-  cd git-undo
-  ./install.sh
-  ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/amberpixels/git-undo/main/install.sh | bash
+```
 
-#### TODOs: easier and better ways to install it
+### Manual method
+
+```bash
+git clone https://github.com/amberpixels/git-undo.git
+cd git-undo
+./install.sh
+```
+
 
 ## Usage
 
@@ -51,6 +56,16 @@ To view the history of git commands that can be undone:
 
 ```bash
 git undo --log
+```
+
+## Recommendations on aliases
+
+We recommend adding the following aliases to your `.zhsrc` file:
+
+```bash
+alias gu="git undo"
+alias guu="git undo undo" # works as Ctrl+Shift+Z, so undoing the undo.
+alias gul="git undo --log"
 ```
 
 ## Examples
