@@ -2,7 +2,7 @@
 
 *A universal “Ctrl + Z” for Git commands.* 🔄
 
-`git-undo` tracks every mutating Git command you run and can roll it back with a single `git undo` 🚀  
+`git-undo` tracks every mutating Git command you run and can roll it back with a single `git undo` 🚀
 No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
 
 ## Table of Contents
@@ -23,8 +23,8 @@ No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
 ---
 
 ## Introduction
-`git-undo` makes destructive Git operations painless to reverse.  
-It records each mutating command (commit, add, merge, stash, …) per‑repository in a tiny log file inside `.git/git-undo/`, 
+`git-undo` makes destructive Git operations painless to reverse.
+It records each mutating command (commit, add, merge, stash, …) per‑repository in a tiny log file inside `.git/git-undo/`,
 then generates the matching *anti‑command* when you call **`git undo`**.
 
 ## Features
@@ -38,7 +38,7 @@ then generates the matching *anti‑command* when you call **`git undo`**.
 ### Prerequisites
 * Git
 * Go ≥ 1.21 (auto‑upgrades to 1.24 via Go toolchain)
-* ZSH shell (other shells coming soon)
+* Zsh or Bash Shells (more shells coming soon)
 
 ### cURL one‑liner *(preferred)*
 
@@ -54,8 +54,12 @@ cd git-undo
 ```
 
 ### Shell‑hook integration
-The installer drops [`scripts/git-undo-hook.zsh`](scripts/git-undo-hook.zsh) into `~/.config/git-undo/`
-and appends a `source` line to your `.zshrc`, so every successful Git command is logged automatically.
+- For zsh:
+  - The installer drops [`scripts/git-undo-hook.zsh`](scripts/git-undo-hook.zsh) into `~/.config/git-undo/`
+and appends a `source` line to your `.zshrc`.
+- For bash:
+  - The installer drops [`scripts/git-undo-hook.bash`](scripts/git-undo-hook.bash) into `~/.config/git-undo/`
+and appends a `source` line to your `.bashrc` / `.bash_profile` (depending on your OS).
 
 ## Quick Start
 ```bash
@@ -111,8 +115,8 @@ make build     # compile to ./build/git-undo
 make install   # installs Go binary and adds zsh hook
 ```
 ## Contributing & Feedback
-Spotted a bug or missing undo case?  
-Opening an issue or PR makes the tool better for everyone.  
+Spotted a bug or missing undo case?
+Opening an issue or PR makes the tool better for everyone.
 If `git-undo` saved your bacon, please **star the repo** and share suggestions!
 
 ## License
