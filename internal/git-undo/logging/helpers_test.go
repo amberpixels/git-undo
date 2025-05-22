@@ -93,7 +93,7 @@ func TestToggleLine(t *testing.T) {
 
 			// Test the toggleLine function
 			err = logging.ToggleLine(file, tt.lineNumber)
-			assert.NoError(t, err, "toggleLine returned an error")
+			require.NoError(t, err, "toggleLine returned an error")
 
 			// Read the file content after toggling
 			file.Seek(0, 0) // Reset file pointer to beginning

@@ -79,7 +79,6 @@ func TestLogger_E2E(t *testing.T) {
 	assert.NotEmpty(t, content)
 	lines := strings.Split(string(content), "\n")
 	assert.Len(t, lines, len(commands)+1)
-	lines = lines[:len(lines)-1] // remove last empty line
 
 	// 2.2 Get latest entry from feature/test branch
 	t.Log("Getting latest entry from feature/test...")

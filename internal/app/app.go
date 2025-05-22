@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/amberpixels/git-undo/internal/githelpers"
-	"github.com/mattn/go-shellwords"
 )
 
 // GitHelper provides methods for reading git references.
@@ -123,17 +121,18 @@ func (a *App) Run(args []string) error {
 		}
 
 		// Execute the original command
-		words, err := shellwords.Parse(lastUndoedEntry.Command)
-		if err != nil {
-			return fmt.Errorf("invalid last undo-ed cmd: %w", err)
+		gitCmd := githelpers.ParseGitCommand(lastUndoedEntry.Command)
+		if !gitCmd.Valid {
+			var validationErr = errors.New("invalid command")
+			if gitCmd.ValidationErr != nil {
+				validationErr = gitCmd.ValidationErr
+			}
+
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastUndoedEntry.Command, validationErr)
 		}
 
-		//nolint:gosec // TODO: future should we be safer here? Maybe let's sign our commands?
-		cmd := exec.Command(words[0], words[1:]...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to redo command: %w", err)
+		if err := a.git.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
+			return fmt.Errorf("failed to redo command[%s]: %w", lastUndoedEntry.Command, err)
 		}
 
 		a.logDebugf("Successfully redid: %s", lastUndoedEntry.Command)
