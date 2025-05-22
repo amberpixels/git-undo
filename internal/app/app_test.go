@@ -183,8 +183,6 @@ func (s *GitTestSuite) TestUndoLog() {
 
 	// Switch back to main and verify the branch name changes in the log
 	s.Git("checkout", "main")
-	s.Git("add", filepath.Base(testFile)) // Use relative path for git commands
-
 	log = s.gitUndoLog()
 	s.Contains(log, "|main|", "Log should contain updated branch name")
 }

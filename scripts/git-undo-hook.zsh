@@ -17,7 +17,7 @@ store_git_command() {
 log_successful_git_command() {
   # Check if we have a git command to log and if the previous command was successful
   if [[ -n "$GIT_COMMAND_TO_LOG" && $? -eq 0 ]]; then
-    GIT_UNDO_INTERNAL_HOOK=1 command git-undo -v --hook="$GIT_COMMAND_TO_LOG"
+    GIT_UNDO_INTERNAL_HOOK=1 command git-undo --hook="$GIT_COMMAND_TO_LOG"
   fi
   # Clear the stored command
   GIT_COMMAND_TO_LOG=""

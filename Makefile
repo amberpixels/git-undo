@@ -1,6 +1,8 @@
 # Variables
 GOLANGCI_LINT := $(shell which golangci-lint)
 
+PKGS := $(shell go list ./...)
+
 BUILD_DIR := build
 CMD_DIR = ./cmd/git-undo
 MAIN_FILE := $(CMD_DIR)/main.go
@@ -26,8 +28,8 @@ test:
 
 # Tidy: format and vet the code
 tidy:
-	@go fmt $$(go list ./...)
-	@go vet $$(go list ./...)
+	@go fmt $(PKGS)
+	@go vet $(PKGS)
 	@go mod tidy
 
 # Install golangci-lint only if it's not already installed

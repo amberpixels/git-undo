@@ -1,6 +1,7 @@
 package logging_test
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
@@ -72,54 +73,52 @@ func TestLogger_E2E(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2.1. Read all log entries
-	content, err := logging.ReadLogFile(lgr)
-	require.NoError(t, err)
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.Bytes()
 	assert.NotEmpty(t, content)
 	lines := strings.Split(string(content), "\n")
-	assert.Len(t, lines, len(commands))
+	assert.Len(t, lines, len(commands)+1)
 
 	// 2.2 Get latest entry from feature/test branch
 	t.Log("Getting latest entry from feature/test...")
 	SwitchRef(mgc, "feature/test")
-	entry, err := lgr.GetEntry(logging.RegularEntry)
+	entry, err := lgr.GetLastEntry(logging.RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, commands[4].cmd, entry.Command)
 	assert.Equal(t, "feature/test", entry.Ref)
 
 	// 3. Toggle the latest entry as undoed
 	t.Log("Toggling latest entry as undoed...")
-	marked, err := lgr.ToggleEntry(entry.GetIdentifier())
-	require.NoError(t, err)
-	assert.True(t, marked, "Entry should be marked as undoed")
+	require.NoError(t, lgr.ToggleEntry(entry.GetIdentifier()))
 
 	// 4. Get the latest undoed entry
 	t.Log("Getting latest undoed entry...")
-	undoedEntry, err := lgr.GetEntry(logging.UndoedEntry)
+	undoedEntry, err := lgr.GetLastEntry(logging.UndoedEntry)
 	require.NoError(t, err)
 	assert.Equal(t, entry.Command, undoedEntry.Command)
 	assert.Equal(t, entry.Ref, undoedEntry.Ref)
 
 	// 5. Toggle the entry back to regular
 	t.Log("Toggling entry back to regular...")
-	marked, err = lgr.ToggleEntry(undoedEntry.GetIdentifier())
-	require.NoError(t, err)
-	assert.False(t, marked, "Entry should be unmarked")
+	require.NoError(t, lgr.ToggleEntry(undoedEntry.GetIdentifier()))
 
 	// 6. Switch to main branch and get its latest entry
 	t.Log("Getting latest entry from main branch...")
 	SwitchRef(mgc, "main")
 
-	mainEntry, err := lgr.GetEntry(logging.RegularEntry)
+	mainEntry, err := lgr.GetLastEntry(logging.RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, commands[1].cmd, mainEntry.Command)
 	assert.Equal(t, "main", mainEntry.Ref)
 
 	// 7. Test entry parsing
 	t.Log("Testing entry parsing...")
-	parsedEntry, err := logging.ParseLogLine(mainEntry.GetIdentifier(), false)
+	parsedEntry, err := logging.ParseLogLine(mainEntry.GetIdentifier())
 	require.NoError(t, err)
 	assert.Equal(t, mainEntry.Command, parsedEntry.Command)
 	assert.Equal(t, mainEntry.Ref, parsedEntry.Ref)
+	assert.False(t, parsedEntry.Undoed)
 	assert.WithinDuration(t, time.Now(), parsedEntry.Timestamp, 24*time.Hour)
 
 	// 8. Test git undo command (should be skipped)
@@ -127,7 +126,7 @@ func TestLogger_E2E(t *testing.T) {
 	err = lgr.LogCommand("git undo")
 	require.NoError(t, err)
 	// Get latest entry - should still be the previous one
-	latestEntry, err := lgr.GetEntry(logging.RegularEntry)
+	latestEntry, err := lgr.GetLastEntry(logging.RegularEntry)
 	require.NoError(t, err)
 	assert.Equal(t, mainEntry.Command, latestEntry.Command)
 }

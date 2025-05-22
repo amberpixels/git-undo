@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/amberpixels/git-undo/internal/githelpers"
-	"github.com/mattn/go-shellwords"
 )
 
 // GitHelper provides methods for reading git references.
@@ -108,32 +106,33 @@ func (a *App) Run(args []string) error {
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
 		// Get the last undoed entry (from current reference)
-		lastUndoedEntry, err := a.lgr.GetEntry(logging.UndoedEntry)
+		lastUndoedEntry, err := a.lgr.GetLastEntry(logging.UndoedEntry)
 		if err != nil {
-			return fmt.Errorf("no command to redo: %w", err)
+			// if not found, that's OK, let's silently ignore
+			if a.verbose {
+				a.logWarnf("No command to redo: %v", err)
+			}
+			return nil
 		}
 
 		// Unmark the entry in the log
-		marked, err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier())
-		if err != nil {
+		if err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier()); err != nil {
 			return fmt.Errorf("failed to unmark command: %w", err)
-		}
-		if marked {
-			return errors.New("command was unexpectedly marked as undoed")
 		}
 
 		// Execute the original command
-		words, err := shellwords.Parse(lastUndoedEntry.Command)
-		if err != nil {
-			return fmt.Errorf("invalid last undo-ed cmd: %w", err)
+		gitCmd := githelpers.ParseGitCommand(lastUndoedEntry.Command)
+		if !gitCmd.Valid {
+			var validationErr = errors.New("invalid command")
+			if gitCmd.ValidationErr != nil {
+				validationErr = gitCmd.ValidationErr
+			}
+
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastUndoedEntry.Command, validationErr)
 		}
 
-		//nolint:gosec // TODO: future should we be safer here? Maybe let's sign our commands?
-		cmd := exec.Command(words[0], words[1:]...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to redo command: %w", err)
+		if err := a.git.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
+			return fmt.Errorf("failed to redo command[%s]: %w", lastUndoedEntry.Command, err)
 		}
 
 		a.logDebugf("Successfully redid: %s", lastUndoedEntry.Command)
@@ -141,7 +140,7 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Get the last git command
-	lastEntry, err := a.lgr.GetEntry(logging.RegularEntry)
+	lastEntry, err := a.lgr.GetLastEntry(logging.RegularEntry)
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
@@ -174,12 +173,10 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Mark the entry as undoed in the log
-	marked, err := a.lgr.ToggleEntry(lastEntry.GetIdentifier())
-	if err != nil {
+	if err := a.lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
 		a.logWarnf("Failed to mark command as undoed: %v", err)
-	} else if !marked {
-		a.logWarnf("Command was already marked as undoed")
 	}
+
 	a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmd.Command)
 	if len(undoCmd.Warnings) > 0 {
 		for _, warning := range undoCmd.Warnings {
@@ -222,21 +219,5 @@ func (a *App) cmdHook(hookArg string) error {
 
 // cmdLog displays the git-undo command log.
 func (a *App) cmdLog() error {
-	// Get the log file path
-	logFile := a.lgr.GetLogPath()
-
-	// Check if log file exists
-	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		return errors.New("no command log found. Run some git commands first")
-	}
-
-	// Read and display the log file
-	content, err := os.ReadFile(logFile)
-	if err != nil {
-		return fmt.Errorf("failed to read log file: %w", err)
-	}
-
-	// Print the log content
-	fmt.Fprintf(os.Stdout, "%s", string(content))
-	return nil
+	return a.lgr.Dump(os.Stdout)
 }
