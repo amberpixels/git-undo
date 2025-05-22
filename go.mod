@@ -1,6 +1,6 @@
 module github.com/amberpixels/git-undo
 
-go 1.24.2
+go 1.22
 
 require (
 	github.com/mattn/go-shellwords v1.0.12
