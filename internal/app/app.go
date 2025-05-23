@@ -58,7 +58,7 @@ func New(repoDir string, version string, verbose, dryRun bool) *App {
 	gitHelper := githelpers.NewGitHelper(repoDir)
 	gitDir, err := gitHelper.GetRepoGitDir()
 	if err != nil {
-		// TODO handle gentlier
+		fmt.Fprintf(os.Stderr, redColor+"git-undo ❌: "+grayColor+"failed to get repo git dir: %v"+resetColor+"\n", err)
 		return nil
 	}
 
