@@ -101,12 +101,17 @@ install_shell_hook() {
 main() {
     log "Starting installation..."
 
-    log "1. Installing Go binary..."
-    make binary-install
+    echo -en "${GRAY}git-undo ↩️:${RESET} 1. Installing Go binary..."
+    if make binary-install 2>/dev/null; then
+        echo -e " ${GREEN}OK${RESET}"
+    else
+        echo -e " ${RED}FAILED${RESET}"
+        exit 1
+    fi
 
     local current_shell
     current_shell=$(detect_shell)
-    log "2. Shell integration. Shell detected as ${YELLOW}$current_shell${RESET}"
+    log "2. Shell integration. Shell detected as ${BLUE}$current_shell${RESET}"
 
     # 3) Install appropriate shell hook
     if install_shell_hook "$current_shell"; then
