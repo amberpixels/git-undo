@@ -1,61 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-# Color codes
-GRAY='\033[90m'
-GREEN='\033[32m'
-RESET='\033[0m'
-
-# Function to print with git-undo prefix in gray
-say() {
-    local message="$1"
-    local color="$2"
-    if [[ -n "$color" ]]; then
-        echo -e "${GRAY}git-undo ↩️:${RESET} ${color}$message${RESET}"
-    else
-        echo -e "${GRAY}git-undo ↩️:${RESET} $message"
-    fi
-}
+# ── colours & logger ───────────────────────────────────────────────────────────
+GRAY='\033[90m'; GREEN='\033[32m'; RESET='\033[0m'
+log()  { echo -e "${GRAY}git-undo ↩️:${RESET} $1"; }
 
 # Function to detect current shell
 detect_shell() {
-    local shell_name
-
-    # Method 1: Check $0 (most reliable for current shell)
-    if [[ "$0" == *"bash"* ]]; then
-        echo "bash"
-        return
-    elif [[ "$0" == *"zsh"* ]]; then
-        echo "zsh"
-        return
-    fi
-
-    # Method 2: Check current process name
-    shell_name=$(ps -p $ -o comm= 2>/dev/null | tr -d '[:space:]')
-    case "$shell_name" in
-        *zsh*)
-            echo "zsh"
-            return
-            ;;
-        *bash*)
-            echo "bash"
-            return
-            ;;
-    esac
-
-    # Method 3: Check BASH_VERSION or ZSH_VERSION environment variables
-    if [[ -n "$BASH_VERSION" ]]; then
-        echo "bash"
-        return
-    elif [[ -n "$ZSH_VERSION" ]]; then
-        echo "zsh"
-        return
-    fi
-
-    # Method 4: Fallback to $SHELL environment variable
+    # Method 1: Check $SHELL environment variable (most reliable for login shell)
     if [[ -n "$SHELL" ]]; then
-        shell_name=$(basename "$SHELL")
-        case "$shell_name" in
+        case "$SHELL" in
             *zsh*)
                 echo "zsh"
                 return
@@ -67,6 +21,15 @@ detect_shell() {
         esac
     fi
 
+    # Method 2: Check shell-specific version variables
+    if [[ -n "$ZSH_VERSION" ]]; then
+        echo "zsh"
+        return
+    elif [[ -n "$BASH_VERSION" ]]; then
+        echo "bash"
+        return
+    fi
+
     # If all methods fail
     echo "unknown"
 }
@@ -76,8 +39,11 @@ install_shell_hook() {
     local shell_type="$1"
     local config_dir="$HOME/.config/git-undo"
 
-    # Create config directory
-    mkdir -p "$config_dir"
+    # Create config directory with proper permissions
+    if [ ! -d "$config_dir" ]; then
+        mkdir -p "$config_dir"
+        chmod 755 "$config_dir"
+    fi
 
     case "$shell_type" in
         "zsh")
@@ -85,15 +51,16 @@ install_shell_hook() {
             local rc_file="$HOME/.zshrc"
             local source_line="source ~/.config/git-undo/$hook_file"
 
-            # Copy the hook file
+            # Copy the hook file and set permissions
             cp "scripts/$hook_file" "$config_dir/$hook_file"
+            chmod 644 "$config_dir/$hook_file"
 
             # Add source line to .zshrc if not already present
             if ! grep -qxF "$source_line" "$rc_file" 2>/dev/null; then
                 echo "$source_line" >> "$rc_file"
-                say "Added '$source_line' to $rc_file"
+                log "Added '$source_line' to $rc_file"
             else
-                say "Hook already configured in $rc_file"
+                log "Hook already configured in $rc_file"
             fi
             ;;
 
@@ -101,8 +68,9 @@ install_shell_hook() {
             local hook_file="git-undo-hook.bash"
             local source_line="source ~/.config/git-undo/$hook_file"
 
-            # Copy the hook file
+            # Copy the hook file and set permissions
             cp "scripts/$hook_file" "$config_dir/$hook_file"
+            chmod 644 "$config_dir/$hook_file"
 
             # Determine which bash config file to use
             local rc_file
@@ -117,15 +85,15 @@ install_shell_hook() {
             # Add source line to the appropriate file if not already present
             if ! grep -qxF "$source_line" "$rc_file" 2>/dev/null; then
                 echo "$source_line" >> "$rc_file"
-                say "Added '$source_line' to $rc_file"
+                log "Added '$source_line' to $rc_file"
             else
-                say "Hook already configured in $rc_file"
+                log "Hook already configured in $rc_file"
             fi
             ;;
 
         *)
-            say "Warning: Unsupported shell '$shell_type'. Skipping shell integration."
-            say "Currently supported shells: zsh, bash"
+            log "Warning: Unsupported shell '$shell_type'. Skipping shell integration."
+            log "Currently supported shells: zsh, bash"
             return 1
             ;;
     esac
@@ -135,26 +103,26 @@ install_shell_hook() {
 
 # Main installation process
 main() {
-    say "Starting installation..."
+    log "Starting installation..."
 
     # 1) Install the git-undo binary
-    say "Installing Go binary..."
+    log "Installing Go binary..."
     make binary-install
 
     # 2) Detect current shell
     local current_shell
     current_shell=$(detect_shell)
-    say "Shell integration. Shell detected as $current_shell"
+    log "Shell integration. Shell detected as $current_shell"
 
     # 3) Install appropriate shell hook
     if install_shell_hook "$current_shell"; then
-        say "Installation completed successfully!" "$GREEN"
-        say "Please restart your shell or run 'source ~/.${current_shell}rc' to activate git-undo"
+        log "${GREEN}Installation completed successfully!${RESET}"
+        log "Please restart your shell or run 'source ~/.${current_shell}rc' to activate git-undo"
 
         #TODO: restart shell (bash/zsh)
     else
-        say "Binary installed, but shell integration failed."
-        say "You can manually source the appropriate hook file from ~/.config/git-undo/"
+        log "Binary installed, but shell integration failed."
+        log "You can manually source the appropriate hook file from ~/.config/git-undo/"
         exit 1
     fi
 }
