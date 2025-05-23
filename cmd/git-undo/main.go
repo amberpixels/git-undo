@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	gitundo "github.com/amberpixels/git-undo"
 	"github.com/amberpixels/git-undo/internal/app"
 )
+
+// Build-time version information
+// This can be set during build using: go build -ldflags "-X main.version=v1.0.0"
+var version = "dev"
 
 func main() {
 	var verbose, dryRun bool
@@ -19,6 +24,11 @@ func main() {
 	}
 
 	application := app.New(".", verbose, dryRun)
+	// Set embedded scripts from root package
+	app.SetEmbeddedScripts(application, gitundo.GetUpdateScript(), gitundo.GetUninstallScript())
+	// Set build-time version
+	app.SetBuildVersion(application, version)
+
 	if err := application.Run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, redColor+"git-undo ❌: "+grayColor+err.Error()+resetColor)
 		os.Exit(1)

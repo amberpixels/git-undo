@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
@@ -33,6 +34,13 @@ type App struct {
 	// isInternalCall is a hack, so app works OK even without GIT_UNDO_INTERNAL_HOOK env variable.
 	// So, we can run tests without setting env vars (but just via setting this flag).
 	isInternalCall bool
+
+	// Embedded scripts for self-management
+	updateScript    string
+	uninstallScript string
+
+	// Build-time version info
+	buildVersion string
 }
 
 // IsInternalCall checks if the hook is being called internally (either via test or zsh script).
@@ -88,7 +96,46 @@ func (a *App) logWarnf(format string, args ...interface{}) {
 func (a *App) Run(args []string) error {
 	a.logDebugf("called in verbose mode")
 
-	// Ensure we're inside a Git repository
+	// Handle version commands first (these don't require git repo)
+	if len(args) >= 1 {
+		firstArg := args[0]
+
+		// Handle version commands: version, --version, self-version
+		if firstArg == "version" || firstArg == "--version" || firstArg == "self-version" {
+			return a.cmdVersion()
+		}
+
+		// Handle "self version"
+		if len(args) >= 2 && firstArg == "self" && args[1] == "version" {
+			return a.cmdVersion()
+		}
+	}
+
+	// Handle self-management commands (these don't require git repo)
+	if len(args) >= 2 {
+		firstArg := args[0]
+		secondArg := args[1]
+
+		// Handle "self update" or "self-update"
+		if (firstArg == "self" && secondArg == "update") || firstArg == "self-update" {
+			return a.cmdSelfUpdate()
+		}
+
+		// Handle "self uninstall" or "self-uninstall"
+		if (firstArg == "self" && secondArg == "uninstall") || firstArg == "self-uninstall" {
+			return a.cmdSelfUninstall()
+		}
+	} else if len(args) == 1 {
+		// Handle single argument forms
+		if args[0] == "self-update" {
+			return a.cmdSelfUpdate()
+		}
+		if args[0] == "self-uninstall" {
+			return a.cmdSelfUninstall()
+		}
+	}
+
+	// Ensure we're inside a Git repository for other commands
 	if err := a.git.ValidateGitRepo(); err != nil {
 		return err
 	}
@@ -224,4 +271,115 @@ func (a *App) cmdHook(hookArg string) error {
 // cmdLog displays the git-undo command log.
 func (a *App) cmdLog() error {
 	return a.lgr.Dump(os.Stdout)
+}
+
+// SetEmbeddedScripts sets the embedded scripts for self-management commands
+func SetEmbeddedScripts(app *App, updateScript, uninstallScript string) {
+	app.updateScript = updateScript
+	app.uninstallScript = uninstallScript
+}
+
+func (a *App) cmdSelfUpdate() error {
+	a.logDebugf("Running embedded self-update script...")
+	return a.runEmbeddedScript(a.updateScript, "update")
+}
+
+func (a *App) cmdSelfUninstall() error {
+	a.logDebugf("Running embedded self-uninstall script...")
+	return a.runEmbeddedScript(a.uninstallScript, "uninstall")
+}
+
+// runEmbeddedScript creates a temporary script file and executes it
+func (a *App) runEmbeddedScript(script, name string) error {
+	if script == "" {
+		return fmt.Errorf("embedded %s script not available", name)
+	}
+
+	// Create temp file with proper extension
+	tmpFile, err := os.CreateTemp("", fmt.Sprintf("git-undo-%s-*.sh", name))
+	if err != nil {
+		return fmt.Errorf("failed to create temp script: %w", err)
+	}
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
+
+	// Write script content
+	if _, err := tmpFile.WriteString(script); err != nil {
+		return fmt.Errorf("failed to write script: %w", err)
+	}
+
+	// Close file before making it executable and running it
+	tmpFile.Close()
+
+	// Make executable
+	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
+		return fmt.Errorf("failed to make script executable: %w", err)
+	}
+
+	a.logDebugf("Executing embedded %s script...", name)
+
+	// Execute script
+	cmd := exec.Command("bash", tmpFile.Name())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
+// SetBuildVersion sets the build-time version information
+func SetBuildVersion(app *App, version string) {
+	app.buildVersion = version
+}
+
+func (a *App) cmdVersion() error {
+	version := a.getVersion()
+	fmt.Printf("git-undo %s\n", version)
+	return nil
+}
+
+// getVersion returns the version using multiple detection methods
+func (a *App) getVersion() string {
+	// 1. Try to get version from git if available (development/repo context)
+	if gitVersion := a.getGitVersion(); gitVersion != "" {
+		return gitVersion
+	}
+
+	// 2. Use build-time embedded version (release builds)
+	if a.buildVersion != "" {
+		return a.buildVersion
+	}
+
+	// 3. Fallback
+	return "unknown"
+}
+
+// getGitVersion attempts to get version from git tags
+func (a *App) getGitVersion() string {
+	// Only try git version if we have a git helper and can run git commands
+	if a.git == nil {
+		return ""
+	}
+
+	// Try to get version from git describe
+	version, err := a.git.GitOutput("describe", "--tags", "--always")
+	if err != nil {
+		return ""
+	}
+
+	// Clean up the version (remove commit suffix if present)
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return ""
+	}
+
+	// Extract just the tag version (remove commit info like -10-g4dd7da9)
+	// This matches the logic from update.sh
+	cleanVersion := strings.Split(version, "-")
+	if len(cleanVersion) > 0 && strings.HasPrefix(cleanVersion[0], "v") {
+		return cleanVersion[0]
+	}
+
+	return version
 }

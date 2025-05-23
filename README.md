@@ -1,6 +1,6 @@
 # git-undo ⏪✨
 
-*A universal “Ctrl + Z” for Git commands.* 🔄
+*A universal "Ctrl + Z" for Git commands.* 🔄
 
 `git-undo` tracks every mutating Git command you run and can roll it back with a single `git undo` 🚀
 No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
@@ -12,6 +12,7 @@ No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
    - [cURL one‑liner](#curl-one-liner-preferred)
    - [Manual clone](#manual-clone)
    - [Shell‑hook integration](#shell-hook-integration)
+   - [Using go install](#using-go-install)
 4. [Quick Start](#quick-start)
 5. [Usage](#usage)
 6. [Supported Git Commands](#supported-git-commands)
@@ -61,6 +62,12 @@ and appends a `source` line to your `.zshrc`.
   - The installer drops [`scripts/git-undo-hook.bash`](scripts/git-undo-hook.bash) into `~/.config/git-undo/`
 and appends a `source` line to your `.bashrc` / `.bash_profile` (depending on your OS).
 
+### Using go install
+
+```bash
+go install github.com/amberpixels/git-undo/cmd/git-undo@latest
+```
+
 ## Quick Start
 ```bash
 git add .
@@ -83,6 +90,33 @@ git undo undo      # redo last undo (like Ctrl+Shift+Z)
 | `git undo --dry-run` | Print what *would* be executed, do nothing        |
 | `git undo --log`     | Dump your logged command history                  |
 
+### Version Information
+
+Check the version of git-undo:
+
+```bash
+git undo version        # Standard version command
+git undo self version   # The same (just a consistent way for other `git undo self` commands)
+```
+
+The version detection works in the following priority:
+1. Git tag version (if in a git repository with tags)
+2. Build-time version (set during compilation)
+3. "unknown" (fallback)
+
+### Self-Management Commands
+
+Update git-undo to the latest version:
+
+```bash
+git undo self update 
+```
+
+Uninstall git-undo:
+
+```bash
+git undo self uninstall
+```
 
 ## Supported Git Commands
 * `commit`
@@ -114,6 +148,30 @@ make lint      # golangci‑lint
 make build     # compile to ./build/git-undo
 make install   # installs Go binary and adds zsh hook
 ```
+
+## Development
+
+### Building with Version Information
+
+To build git-undo with a specific version:
+
+```bash
+# Using git describe
+VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+go build -ldflags "-X main.version=$VERSION" ./cmd/git-undo
+
+# Or manually specify version
+go build -ldflags "-X main.version=v1.2.3" ./cmd/git-undo
+```
+
+### Testing
+
+Run the test suite:
+
+```bash
+go test ./...
+```
+
 ## Contributing & Feedback
 Spotted a bug or missing undo case?
 Opening an issue or PR makes the tool better for everyone.
