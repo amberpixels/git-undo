@@ -58,6 +58,10 @@ binary-install:
 install:
 	./install.sh
 
+.PHONY: uninstall
+uninstall:
+	./uninstall.sh
+
 # Uninstall the binary and remove the alias
 .PHONY: binary-uninstall
 binary-uninstall:
