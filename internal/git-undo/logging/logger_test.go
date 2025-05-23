@@ -83,7 +83,7 @@ func TestLogger_E2E(t *testing.T) {
 	// 2.2 Get latest entry from feature/test branch
 	t.Log("Getting latest entry from feature/test...")
 	SwitchRef(mgc, "feature/test")
-	entry, err := lgr.GetLastEntry(logging.RegularEntry)
+	entry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
 	assert.Equal(t, commands[4].cmd, entry.Command)
 	assert.Equal(t, "feature/test", entry.Ref)
@@ -92,22 +92,22 @@ func TestLogger_E2E(t *testing.T) {
 	t.Log("Toggling latest entry as undoed...")
 	require.NoError(t, lgr.ToggleEntry(entry.GetIdentifier()))
 
-	// 4. Get the latest undoed entry
-	t.Log("Getting latest undoed entry...")
-	undoedEntry, err := lgr.GetLastEntry(logging.UndoedEntry)
+	// 4. Get the latest entry
+	t.Log("Getting latest entry...")
+	latestEntry, err := lgr.GetLastEntry()
 	require.NoError(t, err)
-	assert.Equal(t, entry.Command, undoedEntry.Command)
-	assert.Equal(t, entry.Ref, undoedEntry.Ref)
+	assert.Equal(t, entry.Command, latestEntry.Command)
+	assert.Equal(t, entry.Ref, latestEntry.Ref)
 
 	// 5. Toggle the entry back to regular
 	t.Log("Toggling entry back to regular...")
-	require.NoError(t, lgr.ToggleEntry(undoedEntry.GetIdentifier()))
+	require.NoError(t, lgr.ToggleEntry(latestEntry.GetIdentifier()))
 
 	// 6. Switch to main branch and get its latest entry
 	t.Log("Getting latest entry from main branch...")
 	SwitchRef(mgc, "main")
 
-	mainEntry, err := lgr.GetLastEntry(logging.RegularEntry)
+	mainEntry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
 	assert.Equal(t, commands[1].cmd, mainEntry.Command)
 	assert.Equal(t, "main", mainEntry.Ref)
@@ -125,8 +125,9 @@ func TestLogger_E2E(t *testing.T) {
 	t.Log("Testing git undo command logging...")
 	err = lgr.LogCommand("git undo")
 	require.NoError(t, err)
+
 	// Get latest entry - should still be the previous one
-	latestEntry, err := lgr.GetLastEntry(logging.RegularEntry)
+	latestRegularEntry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
-	assert.Equal(t, mainEntry.Command, latestEntry.Command)
+	assert.Equal(t, mainEntry.Command, latestRegularEntry.Command)
 }

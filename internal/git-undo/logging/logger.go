@@ -36,15 +36,17 @@ const (
 type EntryType int
 
 const (
+	NotSpecifiedEntryType EntryType = iota
+
 	// RegularEntry represents a normal, non-undoed entry.
-	RegularEntry EntryType = iota
+	RegularEntry
 	// UndoedEntry represents an entry that has been marked as undoed.
 	UndoedEntry
 )
 
 // String returns the string representation of the EntryType.
 func (et EntryType) String() string {
-	return [...]string{"regular", "undoed"}[et]
+	return [...]string{"", "regular", "undoed"}[et]
 }
 
 // Entry represents a logged git command with its full identifier.
@@ -183,11 +185,9 @@ func (l *Logger) ToggleEntry(entryIdentifier string) error {
 	return toggleLine(file, foundLineIdx)
 }
 
-// GetLastEntry returns either the last regular entry or the last undoed entry based on the entryType.
-// If a reference is provided in refArg, only entries from that specific reference are considered.
-// If no reference is provided, uses the current reference (branch/tag/commit).
-// Use "any" as refArg to match any reference.
-func (l *Logger) GetLastEntry(entryType EntryType, refArg ...string) (*Entry, error) {
+// GetLastRegularEntry returns last regular entry (ignoring undoed ones)
+// for the given ref (or current ref if not specified).
+func (l *Logger) GetLastRegularEntry(refArg ...string) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
 	}
@@ -208,19 +208,14 @@ func (l *Logger) GetLastEntry(entryType EntryType, refArg ...string) (*Entry, er
 
 	var foundEntry *Entry
 	err := l.processLogFile(func(line string) bool {
-		// Check if this line is undoed (starts with #)
-		isUndoed := strings.HasPrefix(line, "#")
-
-		// Skip if we're looking for the wrong type
-		if (entryType == RegularEntry && isUndoed) ||
-			(entryType == UndoedEntry && !isUndoed) {
+		// skip undoed
+		if strings.HasPrefix(line, "#") {
 			return true
 		}
 
 		// Parse the log line into an Entry
 		entry, err := parseLogLine(line)
-		if err != nil {
-			// Skip malformed lines
+		if err != nil { // TODO: warnings maybe?
 			return true
 		}
 
@@ -237,8 +232,49 @@ func (l *Logger) GetLastEntry(entryType EntryType, refArg ...string) (*Entry, er
 		return nil, err
 	}
 
-	if foundEntry == nil {
-		return nil, fmt.Errorf("no %s command found in log for reference [ref=%s]", entryType, ref)
+	return foundEntry, nil
+}
+
+// GetLastEntry returns last entry for the given ref (or current ref if not specified)
+// regarding of the entry type (undoed or regular).
+func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	// Determine which reference to use
+	var ref string
+	switch len(refArg) {
+	case 0:
+		// No ref provided, use current ref
+		currentRef, err := l.git.GetCurrentGitRef()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current ref: %w", err)
+		}
+		ref = currentRef
+	default:
+		ref = refArg[0]
+	}
+
+	var foundEntry *Entry
+	err := l.processLogFile(func(line string) bool {
+		// Parse the log line into an Entry
+		entry, err := parseLogLine(line)
+		if err != nil { // TODO: warnings maybe?
+			return true
+		}
+
+		// Check reference if specified and not "any"
+		if ref != "" && entry.Ref != ref {
+			return true
+		}
+
+		// Found a matching entry!
+		foundEntry = entry
+		return false
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return foundEntry, nil

@@ -106,47 +106,51 @@ func (a *App) Run(args []string) error {
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
 		// Get the last undoed entry (from current reference)
-		lastUndoedEntry, err := a.lgr.GetLastEntry(logging.UndoedEntry)
+		lastEntry, err := a.lgr.GetLastEntry()
 		if err != nil {
-			// if not found, that's OK, let's silently ignore
-			if a.verbose {
-				a.logWarnf("No command to redo: %v", err)
-			}
+			a.logWarnf("something wrong with the log: %v", err)
+			return nil
+		}
+		if lastEntry == nil || !lastEntry.Undoed {
+			// nothing to undo
 			return nil
 		}
 
 		// Unmark the entry in the log
-		if err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier()); err != nil {
+		if err := a.lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
 			return fmt.Errorf("failed to unmark command: %w", err)
 		}
 
 		// Execute the original command
-		gitCmd := githelpers.ParseGitCommand(lastUndoedEntry.Command)
+		gitCmd := githelpers.ParseGitCommand(lastEntry.Command)
 		if !gitCmd.Valid {
 			var validationErr = errors.New("invalid command")
 			if gitCmd.ValidationErr != nil {
 				validationErr = gitCmd.ValidationErr
 			}
 
-			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastUndoedEntry.Command, validationErr)
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastEntry.Command, validationErr)
 		}
 
 		if err := a.git.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
-			return fmt.Errorf("failed to redo command[%s]: %w", lastUndoedEntry.Command, err)
+			return fmt.Errorf("failed to redo command[%s]: %w", lastEntry.Command, err)
 		}
 
-		a.logDebugf("Successfully redid: %s", lastUndoedEntry.Command)
+		a.logDebugf("Successfully redid: %s", lastEntry.Command)
 		return nil
 	}
 
 	// Get the last git command
-	lastEntry, err := a.lgr.GetLastEntry(logging.RegularEntry)
+	lastEntry, err := a.lgr.GetLastRegularEntry()
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
-	a.logDebugf("Looking for commands from current reference: [%s]", lastEntry.Ref)
+	if lastEntry == nil {
+		a.logDebugf("nothing to undo")
+		return nil
+	}
 
-	a.logDebugf("Last git command: %s", yellowColor+lastEntry.Command+resetColor)
+	a.logDebugf("Last git command[%s]: %s", lastEntry.Ref, yellowColor+lastEntry.Command+resetColor)
 
 	// Get the appropriate undoer
 	u := undoer.New(lastEntry.Command, a.git)
