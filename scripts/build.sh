@@ -6,8 +6,10 @@ SCRIPT_DIR="$(dirname "$0")"
 COMMON_FILE="$SCRIPT_DIR/common.sh"
 SRC_INSTALL="$SCRIPT_DIR/install.src.sh"
 SRC_UNINSTALL="$SCRIPT_DIR/uninstall.src.sh"
+SRC_UPDATE="$SCRIPT_DIR/update.src.sh"
 OUT_INSTALL="$SCRIPT_DIR/../install.sh"
 OUT_UNINSTALL="$SCRIPT_DIR/../uninstall.sh"
+OUT_UPDATE="$SCRIPT_DIR/../update.sh"
 
 echo "Building standalone scripts..."
 
@@ -32,10 +34,11 @@ EOF
         if [[ "$line" =~ ^#!/.* ]]; then
             continue
         fi
-       
+        
         # Replace the common.sh source line with actual content
         if [[ "$line" =~ source.*common\.sh ]]; then
             echo "# ── Inlined content from common.sh ──────────────────────────────────────────" >> "$out_file"
+            # Add common.sh content (skip shebang and comments)
             tail -n +2 "$COMMON_FILE" | grep -v '^#.*Common configuration' >> "$out_file"
             echo "# ── End of inlined content ──────────────────────────────────────────────────" >> "$out_file"
         else
@@ -48,8 +51,9 @@ EOF
     echo "✓ Generated $out_file"
 }
 
-# Build both scripts
+# Build all scripts
 build_script "$SRC_INSTALL" "$OUT_INSTALL"
 build_script "$SRC_UNINSTALL" "$OUT_UNINSTALL"
+build_script "$SRC_UPDATE" "$OUT_UPDATE"
 
 echo "✓ Build complete!" 

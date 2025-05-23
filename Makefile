@@ -70,3 +70,7 @@ binary-uninstall:
 .PHONY: buildscripts
 buildscripts:
 	@./scripts/build.sh
+
+.PHONY: update
+update:
+	./update.sh

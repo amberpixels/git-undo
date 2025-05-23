@@ -79,7 +79,7 @@ main() {
 
     # 1) Install the binary
     echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary..."
-    if make binary-install 2>/dev/null; then
+    if go install "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
         echo -e " ${GREEN}OK${RESET}"
     else
         echo -e " ${RED}FAILED${RESET}"
@@ -112,7 +112,20 @@ main() {
             ;;
     esac
 
-    # 3) Final message
+    # 3) Store version information
+    echo -en "${GRAY}git-undo:${RESET} 3. Storing version info..."
+    local version
+    if [[ -d ".git" ]]; then
+        # If in git repo, use git describe or latest tag
+        version=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "dev")
+    else
+        # If not in git repo (e.g., curl install), try to get from GitHub
+        version=$(get_latest_version 2>/dev/null || echo "unknown")
+    fi
+    set_current_version "$version"
+    echo -e " ${GREEN}OK${RESET} ($version)"
+
+    # 4) Final message
     log "${GREEN}Installation completed successfully!${RESET}"
     echo -e ""
     echo -e "Please restart your shell or run '${YELLOW}source ~/.${current_shell}rc${RESET}' to activate ${BLUE}git-undo${RESET}"
