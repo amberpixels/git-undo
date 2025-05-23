@@ -26,6 +26,7 @@ jobs:
       run: |
         git config --global user.email "ci@amberpixels.io"
         git config --global user.name "GitHub CI"
+        git config --global init.defaultBranch main
     
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -47,7 +48,16 @@ jobs:
       run: go vet ./...
     
     - name: Run tests
-      run: go test -v ./...
+      run: go test -v -count=1 ./...
+    
+    - name: Debug failing tests (if main tests fail)
+      if: failure()
+      run: |
+        echo "=== Debugging TestUndoLog and TestUndoMerge ==="
+        go test -v -run "TestGitUndoSuite/(TestUndoLog|TestUndoMerge)" ./internal/app || true
+        echo "=== Git version and config ==="
+        git --version
+        git config --list --show-origin || true
     
     - name: Test build with version info
       run: |
