@@ -3,7 +3,6 @@
 # DO NOT EDIT - modify scripts/*.src.sh instead and run 'make buildscripts'
 set -e
 
-# Source common configuration
 # ── Inlined content from common.sh ──────────────────────────────────────────
 
 GRAY='\033[90m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; BLUE='\033[34m'; RESET='\033[0m'
@@ -68,17 +67,7 @@ extract_tag_version() {
 }
 
 get_current_tag_version() {
-    # First try to get version from the binary itself
-    if command -v "$BIN_NAME" >/dev/null 2>&1; then
-        local binary_version
-        binary_version=$("$BIN_NAME" --version 2>/dev/null | sed 's/git-undo //g' | head -n1)
-        if [[ -n "$binary_version" && "$binary_version" != "unknown" ]]; then
-            extract_tag_version "$binary_version"
-            return
-        fi
-    fi
-    
-    # Fallback: try to get version from git if we're in a git repo
+    # First try to get version from git if we're in a git repo
     if [[ -d ".git" ]]; then
         local git_version
         git_version=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "")
@@ -88,7 +77,7 @@ get_current_tag_version() {
         fi
     fi
     
-    # Final fallback to stored version file
+    # Fallback to stored version file
     local version
     version=$(get_current_version)
     if [[ "$version" == "unknown" ]]; then
