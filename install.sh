@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-# ── colours & logger ───────────────────────────────────────────────────────────
-GRAY='\033[90m'; GREEN='\033[32m'; RESET='\033[0m'
+GRAY='\033[90m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; BLUE='\033[34m'; RESET='\033[0m'
 log()  { echo -e "${GRAY}git-undo ↩️:${RESET} $1"; }
 
-# Function to detect current shell
 detect_shell() {
     # Method 1: Check $SHELL environment variable (most reliable for login shell)
     if [[ -n "$SHELL" ]]; then
@@ -34,7 +32,6 @@ detect_shell() {
     echo "unknown"
 }
 
-# Function to install shell hook
 install_shell_hook() {
     local shell_type="$1"
     local config_dir="$HOME/.config/git-undo"
@@ -101,28 +98,24 @@ install_shell_hook() {
     return 0
 }
 
-# Main installation process
 main() {
     log "Starting installation..."
 
-    # 1) Install the git-undo binary
-    log "Installing Go binary..."
+    log "1. Installing Go binary..."
     make binary-install
 
-    # 2) Detect current shell
     local current_shell
     current_shell=$(detect_shell)
-    log "Shell integration. Shell detected as $current_shell"
+    log "2. Shell integration. Shell detected as ${YELLOW}$current_shell${RESET}"
 
     # 3) Install appropriate shell hook
     if install_shell_hook "$current_shell"; then
         log "${GREEN}Installation completed successfully!${RESET}"
-        log "Please restart your shell or run 'source ~/.${current_shell}rc' to activate git-undo"
+        log "Please restart your shell or run '${YELLOW}source ~/.${current_shell}rc${RESET}' to activate ${BLUE}git-undo${RESET}"
 
         #TODO: restart shell (bash/zsh)
     else
-        log "Binary installed, but shell integration failed."
-        log "You can manually source the appropriate hook file from ~/.config/git-undo/"
+        log "${RED}Shell integration failed.${RESET} You can manually source the appropriate hook file from ${YELLOW}~/.config/git-undo/${RESET}"
         exit 1
     fi
 }
