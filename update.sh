@@ -23,7 +23,6 @@ REPO_NAME="git-undo"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
 
-# ── shell detection ──────────────────────────────────────────────────────────
 detect_shell() {
     # Method 1: Check $SHELL environment variable (most reliable for login shell)
     if [[ -n "$SHELL" ]]; then
@@ -52,52 +51,12 @@ detect_shell() {
     echo "unknown"
 }
 
-get_current_version() {
-    if [[ -f "$VERSION_FILE" ]]; then
-        cat "$VERSION_FILE"
-    else
-        echo "unknown"
-    fi
-}
-
-extract_tag_version() {
-    local version="$1"
-    # Extract just the tag part from git describe output (e.g., v0.0.1-10-g4dd7da9 -> v0.0.1)
-    echo "$version" | sed 's/-[0-9]*-g[0-9a-f]*$//'
-}
-
-get_current_tag_version() {
-    # First try to get version from git if we're in a git repo
-    if [[ -d ".git" ]]; then
-        local git_version
-        git_version=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "")
-        if [[ -n "$git_version" ]]; then
-            extract_tag_version "$git_version"
-            return
-        fi
-    fi
-    
-    # Fallback to stored version file
-    local version
-    version=$(get_current_version)
-    if [[ "$version" == "unknown" ]]; then
-        echo "unknown"
-    else
-        extract_tag_version "$version"
-    fi
-}
-
-set_current_version() {
-    local version="$1"
-    echo "$version" > "$VERSION_FILE"
-}
-
 get_latest_version() {
     local latest_release
     if command -v curl >/dev/null 2>&1; then
-        latest_release=$(curl -s "$GITHUB_API_URL/releases/latest" | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
+        latest_release=$(curl -s "$GITHUB_API_URL/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     elif command -v wget >/dev/null 2>&1; then
-        latest_release=$(wget -qO- "$GITHUB_API_URL/releases/latest" | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
+        latest_release=$(wget -qO- "$GITHUB_API_URL/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     else
         echo "error: curl or wget required for version check" >&2
         return 1
@@ -119,16 +78,33 @@ version_compare() {
     version1=${version1#v}
     version2=${version2#v}
     
-    # Convert versions to comparable format (e.g., 1.2.3 -> 001002003)
-    local v1=$(echo "$version1" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
-    local v2=$(echo "$version2" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    # Extract base version (everything before the first dash)
+    local base1=$(echo "$version1" | cut -d'-' -f1)
+    local base2=$(echo "$version2" | cut -d'-' -f1)
     
+    # Convert base versions to comparable format (e.g., 1.2.3 -> 001002003)
+    local v1=$(echo "$base1" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    local v2=$(echo "$base2" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    
+    # Compare base versions first
     if [[ "$v1" < "$v2" ]]; then
         echo "older"
     elif [[ "$v1" > "$v2" ]]; then
         echo "newer"
     else
-        echo "same"
+        # Base versions are the same, check for development version indicators
+        # If one has additional info (date, commit, branch) and the other doesn't, 
+        # the one with additional info is newer
+        if [[ "$version1" == "$base1" && "$version2" != "$base2" ]]; then
+            # version1 is base tag, version2 is development version
+            echo "older"
+        elif [[ "$version1" != "$base1" && "$version2" == "$base2" ]]; then
+            # version1 is development version, version2 is base tag
+            echo "newer"
+        else
+            # Both are either base tags or both are development versions
+            echo "same"
+        fi
     fi
 } 
 # ── End of inlined content ──────────────────────────────────────────────────
@@ -136,13 +112,18 @@ version_compare() {
 main() {
     log "Checking for updates..."
 
-    # 1) Get current tag version (ignore commits)
+    # 1) Get current version from the binary itself
     echo -en "${GRAY}git-undo:${RESET} 1. Current version..."
     local current_version
-    current_version=$(get_current_tag_version)
-    if [[ "$current_version" == "unknown" ]]; then
+    if ! current_version=$(git-undo version 2>/dev/null | awk '{print $2}'); then
+        echo -e " ${RED}FAILED${RESET}"
+        log "Could not determine current version. Is git-undo installed?"
+        exit 1
+    fi
+    
+    if [[ -z "$current_version" || "$current_version" == "unknown" ]]; then
         echo -e " ${YELLOW}UNKNOWN${RESET}"
-        log "No version information found. Run '${YELLOW}git-undo --version${RESET}' or reinstall."
+        log "No version information found. Reinstall git-undo."
         exit 1
     else
         echo -e " ${BLUE}$current_version${RESET}"
@@ -158,7 +139,7 @@ main() {
     fi
     echo -e " ${BLUE}$latest_version${RESET}"
 
-    # 3) Compare tag versions only
+    # 3) Compare versions
     echo -en "${GRAY}git-undo:${RESET} 3. Comparing releases..."
     local comparison
     comparison=$(version_compare "$current_version" "$latest_version")
@@ -239,3 +220,4 @@ main() {
 }
 
 # Run main function
+main "$@"

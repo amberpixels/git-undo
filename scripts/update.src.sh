@@ -6,13 +6,18 @@ source "$(dirname "$0")/common.sh"
 main() {
     log "Checking for updates..."
 
-    # 1) Get current tag version (ignore commits)
+    # 1) Get current version from the binary itself
     echo -en "${GRAY}git-undo:${RESET} 1. Current version..."
     local current_version
-    current_version=$(get_current_tag_version)
-    if [[ "$current_version" == "unknown" ]]; then
+    if ! current_version=$(git-undo version 2>/dev/null | awk '{print $2}'); then
+        echo -e " ${RED}FAILED${RESET}"
+        log "Could not determine current version. Is git-undo installed?"
+        exit 1
+    fi
+    
+    if [[ -z "$current_version" || "$current_version" == "unknown" ]]; then
         echo -e " ${YELLOW}UNKNOWN${RESET}"
-        log "No version information found. Run '${YELLOW}git-undo --version${RESET}' or reinstall."
+        log "No version information found. Reinstall git-undo."
         exit 1
     else
         echo -e " ${BLUE}$current_version${RESET}"
@@ -28,7 +33,7 @@ main() {
     fi
     echo -e " ${BLUE}$latest_version${RESET}"
 
-    # 3) Compare tag versions only
+    # 3) Compare versions
     echo -en "${GRAY}git-undo:${RESET} 3. Comparing releases..."
     local comparison
     comparison=$(version_compare "$current_version" "$latest_version")
@@ -109,4 +114,4 @@ main() {
 }
 
 # Run main function
-main "$@" 
+main "$@"

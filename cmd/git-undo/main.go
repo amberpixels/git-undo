@@ -9,7 +9,7 @@ import (
 )
 
 // Build-time version information
-// This can be set during build using: go build -ldflags "-X main.version=v1.0.0"
+// This can be set during build using: go build -ldflags "-X main.version=v1.0.0".
 var version = "dev"
 
 func main() {
@@ -23,11 +23,9 @@ func main() {
 		}
 	}
 
-	application := app.New(".", verbose, dryRun)
+	application := app.New(".", version, verbose, dryRun)
 	// Set embedded scripts from root package
 	app.SetEmbeddedScripts(application, gitundo.GetUpdateScript(), gitundo.GetUninstallScript())
-	// Set build-time version
-	app.SetBuildVersion(application, version)
 
 	if err := application.Run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, redColor+"git-undo ❌: "+grayColor+err.Error()+resetColor)

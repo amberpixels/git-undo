@@ -54,7 +54,7 @@ func (a *App) IsInternalCall() bool {
 }
 
 // New creates a new App instance.
-func New(repoDir string, verbose, dryRun bool) *App {
+func New(repoDir string, version string, verbose, dryRun bool) *App {
 	gitHelper := githelpers.NewGitHelper(repoDir)
 	gitDir, err := gitHelper.GetRepoGitDir()
 	if err != nil {
@@ -63,10 +63,11 @@ func New(repoDir string, verbose, dryRun bool) *App {
 	}
 
 	return &App{
-		verbose: verbose,
-		dryRun:  dryRun,
-		git:     gitHelper,
-		lgr:     logging.NewLogger(gitDir, gitHelper),
+		buildVersion: version,
+		verbose:      verbose,
+		dryRun:       dryRun,
+		git:          gitHelper,
+		lgr:          logging.NewLogger(gitDir, gitHelper),
 	}
 }
 
@@ -106,6 +107,7 @@ func (a *App) Run(args []string) error {
 		}
 
 		// Handle "self version"
+		//nolint:goconst // we're fine with this for now
 		if len(args) >= 2 && firstArg == "self" && args[1] == "version" {
 			return a.cmdVersion()
 		}
@@ -273,7 +275,7 @@ func (a *App) cmdLog() error {
 	return a.lgr.Dump(os.Stdout)
 }
 
-// SetEmbeddedScripts sets the embedded scripts for self-management commands
+// SetEmbeddedScripts sets the embedded scripts for self-management commands.
 func SetEmbeddedScripts(app *App, updateScript, uninstallScript string) {
 	app.updateScript = updateScript
 	app.uninstallScript = uninstallScript
@@ -289,7 +291,7 @@ func (a *App) cmdSelfUninstall() error {
 	return a.runEmbeddedScript(a.uninstallScript, "uninstall")
 }
 
-// runEmbeddedScript creates a temporary script file and executes it
+// runEmbeddedScript creates a temporary script file and executes it.
 func (a *App) runEmbeddedScript(script, name string) error {
 	if script == "" {
 		return fmt.Errorf("embedded %s script not available", name)
@@ -301,8 +303,9 @@ func (a *App) runEmbeddedScript(script, name string) error {
 		return fmt.Errorf("failed to create temp script: %w", err)
 	}
 	defer func() {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
+		// TODO: handle error: log warnings at least
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
 	}()
 
 	// Write script content
@@ -311,9 +314,10 @@ func (a *App) runEmbeddedScript(script, name string) error {
 	}
 
 	// Close file before making it executable and running it
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Make executable
+	//nolint:gosec // TODO: fix me in future
 	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
 		return fmt.Errorf("failed to make script executable: %w", err)
 	}
@@ -321,6 +325,7 @@ func (a *App) runEmbeddedScript(script, name string) error {
 	a.logDebugf("Executing embedded %s script...", name)
 
 	// Execute script
+	//nolint:gosec // TODO: fix me in future
 	cmd := exec.Command("bash", tmpFile.Name())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -328,58 +333,7 @@ func (a *App) runEmbeddedScript(script, name string) error {
 	return cmd.Run()
 }
 
-// SetBuildVersion sets the build-time version information
-func SetBuildVersion(app *App, version string) {
-	app.buildVersion = version
-}
-
 func (a *App) cmdVersion() error {
-	version := a.getVersion()
-	fmt.Printf("git-undo %s\n", version)
+	fmt.Fprintf(os.Stdout, "git-undo %s\n", a.buildVersion)
 	return nil
-}
-
-// getVersion returns the version using multiple detection methods
-func (a *App) getVersion() string {
-	// 1. Try to get version from git if available (development/repo context)
-	if gitVersion := a.getGitVersion(); gitVersion != "" {
-		return gitVersion
-	}
-
-	// 2. Use build-time embedded version (release builds)
-	if a.buildVersion != "" {
-		return a.buildVersion
-	}
-
-	// 3. Fallback
-	return "unknown"
-}
-
-// getGitVersion attempts to get version from git tags
-func (a *App) getGitVersion() string {
-	// Only try git version if we have a git helper and can run git commands
-	if a.git == nil {
-		return ""
-	}
-
-	// Try to get version from git describe
-	version, err := a.git.GitOutput("describe", "--tags", "--always")
-	if err != nil {
-		return ""
-	}
-
-	// Clean up the version (remove commit suffix if present)
-	version = strings.TrimSpace(version)
-	if version == "" {
-		return ""
-	}
-
-	// Extract just the tag version (remove commit info like -10-g4dd7da9)
-	// This matches the logic from update.sh
-	cleanVersion := strings.Split(version, "-")
-	if len(cleanVersion) > 0 && strings.HasPrefix(cleanVersion[0], "v") {
-		return cleanVersion[0]
-	}
-
-	return version
 }
