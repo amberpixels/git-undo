@@ -66,3 +66,7 @@ uninstall:
 .PHONY: binary-uninstall
 binary-uninstall:
 	rm -f $(INSTALL_DIR)/$(BINARY_NAME)
+
+.PHONY: buildscripts
+buildscripts:
+	@./scripts/build.sh
