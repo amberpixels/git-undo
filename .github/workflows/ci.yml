@@ -22,6 +22,11 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
     
+    - name: Configure Git
+      run: |
+        git config --global user.email "ci@amberpixels.io"
+        git config --global user.name "GitHub CI"
+    
     - name: Cache Go modules
       uses: actions/cache@v4
       with:
