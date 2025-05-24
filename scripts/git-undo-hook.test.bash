@@ -31,8 +31,18 @@ log_successful_git_command() {
   GIT_COMMAND_TO_LOG=""
 }
 
-# trap does the actual hooking: making an extra git-undo call for every git command.
-trap 'store_git_command "$BASH_COMMAND"' DEBUG
+
+# Test mode: provide a manual way to capture commands
+# This is only used for integration-test.bats. 
+git() {
+    command git "$@"
+    local exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+        GIT_UNDO_INTERNAL_HOOK=1 command git-undo --hook="git $*"
+    fi
+    return $exit_code
+}
+
 
 # Set up PROMPT_COMMAND to log successful commands after execution
 if [[ -z "$PROMPT_COMMAND" ]]; then

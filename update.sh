@@ -140,142 +140,115 @@ version_compare() {
 } 
 # ── End of inlined content ──────────────────────────────────────────────────
 
-install_shell_hook() {
-    local shell_type="$1"
-    local is_noop=true
+main() {
+    log "Checking for updates..."
 
-    # Create config directory with proper permissions
-    if [ ! -d "$CFG_DIR" ]; then
-        mkdir -p "$CFG_DIR" 2>/dev/null || return 1
-        chmod 755 "$CFG_DIR" 2>/dev/null || return 1
-        is_noop=false
+    # 1) Get current version from the binary itself
+    echo -en "${GRAY}git-undo:${RESET} 1. Current version..."
+    local current_version
+    if ! current_version=$(git-undo version 2>/dev/null | awk '{print $2}'); then
+        echo -e " ${RED}FAILED${RESET}"
+        log "Could not determine current version. Is git-undo installed?"
+        exit 1
+    fi
+    
+    if [[ -z "$current_version" || "$current_version" == "unknown" ]]; then
+        echo -e " ${YELLOW}UNKNOWN${RESET}"
+        log "No version information found. Reinstall git-undo."
+        exit 1
+    else
+        echo -e " ${BLUE}$current_version${RESET}"
     fi
 
-    case "$shell_type" in
-        "zsh")
-            local hook_file="git-undo-hook.zsh"
-            local rc_file="$HOME/.zshrc"
-            local source_line="source ~/.config/git-undo/$hook_file"
+    # 2) Get latest release version
+    echo -en "${GRAY}git-undo:${RESET} 2. Checking latest release..."
+    local latest_version
+    if ! latest_version=$(get_latest_version); then
+        echo -e " ${RED}FAILED${RESET}"
+        log "Failed to check latest version. Check your internet connection."
+        exit 1
+    fi
+    echo -e " ${BLUE}$latest_version${RESET}"
 
-            # Copy the hook file and set permissions
-            if [ ! -f "$ZSH_HOOK" ]; then
-                cp "scripts/$hook_file" "$ZSH_HOOK" 2>/dev/null || return 1
-                chmod 644 "$ZSH_HOOK" 2>/dev/null || return 1
-                is_noop=false
-            fi
-
-            # Add source line to .zshrc if not already present
-            if ! grep -qxF "$source_line" "$rc_file" 2>/dev/null; then
-                echo "$source_line" >> "$rc_file" 2>/dev/null || return 1
-                is_noop=false
-            fi
+    # 3) Compare versions
+    echo -en "${GRAY}git-undo:${RESET} 3. Comparing releases..."
+    local comparison
+    comparison=$(version_compare "$current_version" "$latest_version")
+    
+    case "$comparison" in
+        "same")
+            echo -e " ${GREEN}UP TO DATE${RESET}"
+            log "You're already running the latest release (${BLUE}$current_version${RESET})"
+            exit 0
             ;;
-
-        "bash")
-            local hook_file="git-undo-hook.bash"
-            local source_line="source ~/.config/git-undo/$hook_file"
-
-            # Use test hook in test environments (e.g., integration tests)
-            if [[ "${GIT_UNDO_TEST_MODE:-}" == "true" ]]; then
-                hook_file="git-undo-hook.test.bash"
-            fi
-
-            # Copy the hook file and set permissions
-            if [ ! -f "$BASH_HOOK" ]; then
-                cp "scripts/$hook_file" "$BASH_HOOK" 2>/dev/null || return 1
-                chmod 644 "$BASH_HOOK" 2>/dev/null || return 1
-                is_noop=false
-            fi
-
-            # Determine which bash config file to use
-            local rc_file
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                # macOS uses .bash_profile for login shells (default in Terminal.app)
-                rc_file="$HOME/.bash_profile"
-            else
-                # Linux typically uses .bashrc for interactive shells
-                rc_file="$HOME/.bashrc"
-            fi
-
-            # Add source line to the appropriate file if not already present
-            if ! grep -qxF "$source_line" "$rc_file" 2>/dev/null; then
-                echo "$source_line" >> "$rc_file" 2>/dev/null || return 1
-                is_noop=false
-            fi
+        "newer")
+            echo -e " ${YELLOW}NEWER${RESET}"
+            log "You're running a newer release than available (${BLUE}$current_version${RESET} > ${BLUE}$latest_version${RESET})"
+            exit 0
             ;;
-
-        *)
-            return 1
+        "older")
+            echo -e " ${YELLOW}UPDATE AVAILABLE${RESET}"
             ;;
     esac
 
-    # Return 2 if no changes were made (already installed)
-    if $is_noop; then
-        return 2
-    fi
-    return 0
-}
+    # 4) Ask for confirmation
+    echo -e ""
+    echo -e "Update available: ${BLUE}$current_version${RESET} → ${GREEN}$latest_version${RESET}"
+    echo -en "Do you want to update? [Y/n]: "
+    read -r response
+    
+    case "$response" in
+        [nN]|[nN][oO])
+            log "Update cancelled."
+            exit 0
+            ;;
+        *)
+            ;;
+    esac
 
-main() {
-    log "Starting installation..."
-
-    # 1) Install the binary
-    echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary..."
-
-    # Check if we're in dev mode with local source available
-    if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
-        echo -e " ${YELLOW}(dev mode)${RESET}"
-        log "Building from local source using Makefile..."
-        
-        # Use Makefile's binary-install target which has proper version logic
-        if make binary-install; then
-            # Get the version that was just installed
-            INSTALLED_VERSION=$(git-undo --version 2>/dev/null | grep -o 'git-undo.*' || echo "unknown")
-            echo -e "${GRAY}git-undo:${RESET} Binary installed with version: ${BLUE}$INSTALLED_VERSION${RESET}"
+    # 5) Download and run new installer
+    echo -en "${GRAY}git-undo:${RESET} 4. Downloading latest installer..."
+    local temp_installer
+    temp_installer=$(mktemp)
+    
+    if command -v curl >/dev/null 2>&1; then
+        if curl -sL "$INSTALL_URL" -o "$temp_installer"; then
+            echo -e " ${GREEN}OK${RESET}"
         else
-            echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
+            echo -e " ${RED}FAILED${RESET}"
+            rm -f "$temp_installer"
+            exit 1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if wget -qO "$temp_installer" "$INSTALL_URL"; then
+            echo -e " ${GREEN}OK${RESET}"
+        else
+            echo -e " ${RED}FAILED${RESET}"
+            rm -f "$temp_installer"
             exit 1
         fi
     else
-        # Normal user installation from GitHub
-        if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
-            echo -e " ${GREEN}OK${RESET}"
-        else
-            echo -e " ${RED}FAILED${RESET}"
-            exit 1
-        fi
+        echo -e " ${RED}FAILED${RESET}"
+        log "curl or wget required for update"
+        exit 1
     fi
 
-    # 2) Shell integration
-    local current_shell
-    current_shell=$(detect_shell)
-    echo -en "${GRAY}git-undo:${RESET} 2. Shell integration (${BLUE}$current_shell${RESET})..."
-    
-    # Temporarily disable set -e to capture non-zero exit codes
-    set +e
-    local hook_output
-    hook_output=$(install_shell_hook "$current_shell" 2>&1)
-    local hook_status=$?
-    set -e
-    
-    case $hook_status in
-        0)
-            echo -e " ${GREEN}OK${RESET}"
-            ;;
-        2)
-            echo -e " ${YELLOW}SKIP${RESET} (already configured)"
-            ;;
-        *)
-            echo -e " ${RED}FAILED${RESET}"
-            log "You can manually source the appropriate hook file from ${YELLOW}$CFG_DIR${RESET}"
-            exit 1
-            ;;
-    esac
-
-    # 3) Final message
-    log "${GREEN}Installation completed successfully!${RESET}"
+    # 6) Run the installer
     echo -e ""
-    echo -e "Please restart your shell or run '${YELLOW}source ~/.${current_shell}rc${RESET}' to activate ${BLUE}git-undo${RESET}"
+    log "Running installer..."
+    chmod +x "$temp_installer"
+    "$temp_installer"
+    local install_status=$?
+    rm -f "$temp_installer"
+
+    if [[ $install_status -eq 0 ]]; then
+        log "${GREEN}Update completed successfully!${RESET}"
+        log "Updated to version ${GREEN}$latest_version${RESET}"
+    else
+        log "${RED}Update failed.${RESET}"
+        exit 1
+    fi
 }
 
+# Run main function
 main "$@"

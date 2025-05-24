@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        go-version: [1.24]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Configure Git
+      run: |
+        git config --global user.email "ci@amberpixels.io"
+        git config --global user.name "GitHub CI"
+        git config --global init.defaultBranch main
+    
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Verify dependencies
+      run: go mod verify
+    
+    - name: Run go vet
+      run: go vet ./...
+    
+    - name: Run tests
+      run: go test -v -count=1 ./...
+    
+    - name: Debug failing tests (if main tests fail)
+      if: failure()
+      run: |
+        echo "=== Debugging TestUndoLog and TestUndoMerge ==="
+        go test -v -run "TestGitUndoSuite/(TestUndoLog|TestUndoMerge)" ./internal/app || true
+        echo "=== Git version and config ==="
+        git --version
+        git config --list --show-origin || true
+    
+    - name: Test build with version info
+      run: |
+        TEST_VERSION="v0.0.0-ci-test-$(date +%Y%m%d%H%M%S)"
+        go build -ldflags "-X main.version=${TEST_VERSION}" -o build/git-undo-versioned ./cmd/git-undo
+        echo "Built binary with test version: ${TEST_VERSION}"
+        
+        # Test that the binary outputs the correct version
+        BINARY_VERSION=$(./build/git-undo-versioned --version 2>/dev/null || echo "version command not found")
+        echo "Binary reported version: ${BINARY_VERSION}"
+        
+        # Verify the version matches (allowing for some flexibility in output format)
+        if echo "${BINARY_VERSION}" | grep -q "${TEST_VERSION}"; then
+          echo "✅ Version verification successful!"
+        else
+          echo "❌ Version verification failed!"
+          echo "Expected: ${TEST_VERSION}"
+          echo "Got: ${BINARY_VERSION}"
+          exit 1
+        fi 

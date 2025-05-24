@@ -1,0 +1,54 @@
+FROM ubuntu:24.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies (what a real user would have)
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    bash \
+    zsh \
+    golang-go \
+    ca-certificates \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Go environment for toolchain management
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GOSUMDB=sum.golang.org
+ENV GOTOOLCHAIN=auto
+
+# Install bats-core testing framework (as root)
+RUN git clone https://github.com/bats-core/bats-core.git && \
+    cd bats-core && \
+    ./install.sh /usr/local && \
+    cd .. && rm -rf bats-core
+
+# Create test user (non-root for realistic testing)
+RUN useradd -m -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Set up git config for testing
+RUN git config --global user.email "git-undo-test@amberpixels.io" && \
+    git config --global user.name "Git-Undo Integration Test User" && \
+    git config --global init.defaultBranch main
+
+# Install bats helper libraries (as testuser)
+RUN mkdir -p test_helper && \
+    git clone https://github.com/bats-core/bats-support test_helper/bats-support && \
+    git clone https://github.com/bats-core/bats-assert test_helper/bats-assert
+
+# Copy integration test files
+COPY --chown=testuser:testuser scripts/integration/integration-test.bats /home/testuser/
+COPY --chown=testuser:testuser scripts/integration/setup-and-test-prod.sh /home/testuser/setup-and-test.sh
+
+# Make the setup script executable
+RUN chmod +x /home/testuser/setup-and-test.sh
+
+# Set working directory for tests
+WORKDIR /home/testuser
+
+# Run setup and integration test
+CMD ["./setup-and-test.sh"] 

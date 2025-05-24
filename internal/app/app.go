@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
@@ -33,6 +34,13 @@ type App struct {
 	// isInternalCall is a hack, so app works OK even without GIT_UNDO_INTERNAL_HOOK env variable.
 	// So, we can run tests without setting env vars (but just via setting this flag).
 	isInternalCall bool
+
+	// Embedded scripts for self-management
+	updateScript    string
+	uninstallScript string
+
+	// Build-time version info
+	buildVersion string
 }
 
 // IsInternalCall checks if the hook is being called internally (either via test or zsh script).
@@ -46,19 +54,20 @@ func (a *App) IsInternalCall() bool {
 }
 
 // New creates a new App instance.
-func New(repoDir string, verbose, dryRun bool) *App {
+func New(repoDir string, version string, verbose, dryRun bool) *App {
 	gitHelper := githelpers.NewGitHelper(repoDir)
 	gitDir, err := gitHelper.GetRepoGitDir()
 	if err != nil {
-		// TODO handle gentlier
+		fmt.Fprintf(os.Stderr, redColor+"git-undo ❌: "+grayColor+"failed to get repo git dir: %v"+resetColor+"\n", err)
 		return nil
 	}
 
 	return &App{
-		verbose: verbose,
-		dryRun:  dryRun,
-		git:     gitHelper,
-		lgr:     logging.NewLogger(gitDir, gitHelper),
+		buildVersion: version,
+		verbose:      verbose,
+		dryRun:       dryRun,
+		git:          gitHelper,
+		lgr:          logging.NewLogger(gitDir, gitHelper),
 	}
 }
 
@@ -88,7 +97,47 @@ func (a *App) logWarnf(format string, args ...interface{}) {
 func (a *App) Run(args []string) error {
 	a.logDebugf("called in verbose mode")
 
-	// Ensure we're inside a Git repository
+	// Handle version commands first (these don't require git repo)
+	if len(args) >= 1 {
+		firstArg := args[0]
+
+		// Handle version commands: version, --version, self-version
+		if firstArg == "version" || firstArg == "--version" || firstArg == "self-version" {
+			return a.cmdVersion()
+		}
+
+		// Handle "self version"
+		//nolint:goconst // we're fine with this for now
+		if len(args) >= 2 && firstArg == "self" && args[1] == "version" {
+			return a.cmdVersion()
+		}
+	}
+
+	// Handle self-management commands (these don't require git repo)
+	if len(args) >= 2 {
+		firstArg := args[0]
+		secondArg := args[1]
+
+		// Handle "self update" or "self-update"
+		if (firstArg == "self" && secondArg == "update") || firstArg == "self-update" {
+			return a.cmdSelfUpdate()
+		}
+
+		// Handle "self uninstall" or "self-uninstall"
+		if (firstArg == "self" && secondArg == "uninstall") || firstArg == "self-uninstall" {
+			return a.cmdSelfUninstall()
+		}
+	} else if len(args) == 1 {
+		// Handle single argument forms
+		if args[0] == "self-update" {
+			return a.cmdSelfUpdate()
+		}
+		if args[0] == "self-uninstall" {
+			return a.cmdSelfUninstall()
+		}
+	}
+
+	// Ensure we're inside a Git repository for other commands
 	if err := a.git.ValidateGitRepo(); err != nil {
 		return err
 	}
@@ -106,47 +155,51 @@ func (a *App) Run(args []string) error {
 	// Check if this is a "git undo undo" command
 	if len(args) > 0 && args[0] == "undo" {
 		// Get the last undoed entry (from current reference)
-		lastUndoedEntry, err := a.lgr.GetLastEntry(logging.UndoedEntry)
+		lastEntry, err := a.lgr.GetLastEntry()
 		if err != nil {
-			// if not found, that's OK, let's silently ignore
-			if a.verbose {
-				a.logWarnf("No command to redo: %v", err)
-			}
+			a.logWarnf("something wrong with the log: %v", err)
+			return nil
+		}
+		if lastEntry == nil || !lastEntry.Undoed {
+			// nothing to undo
 			return nil
 		}
 
 		// Unmark the entry in the log
-		if err := a.lgr.ToggleEntry(lastUndoedEntry.GetIdentifier()); err != nil {
+		if err := a.lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
 			return fmt.Errorf("failed to unmark command: %w", err)
 		}
 
 		// Execute the original command
-		gitCmd := githelpers.ParseGitCommand(lastUndoedEntry.Command)
+		gitCmd := githelpers.ParseGitCommand(lastEntry.Command)
 		if !gitCmd.Valid {
 			var validationErr = errors.New("invalid command")
 			if gitCmd.ValidationErr != nil {
 				validationErr = gitCmd.ValidationErr
 			}
 
-			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastUndoedEntry.Command, validationErr)
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastEntry.Command, validationErr)
 		}
 
 		if err := a.git.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
-			return fmt.Errorf("failed to redo command[%s]: %w", lastUndoedEntry.Command, err)
+			return fmt.Errorf("failed to redo command[%s]: %w", lastEntry.Command, err)
 		}
 
-		a.logDebugf("Successfully redid: %s", lastUndoedEntry.Command)
+		a.logDebugf("Successfully redid: %s", lastEntry.Command)
 		return nil
 	}
 
 	// Get the last git command
-	lastEntry, err := a.lgr.GetLastEntry(logging.RegularEntry)
+	lastEntry, err := a.lgr.GetLastRegularEntry()
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
-	a.logDebugf("Looking for commands from current reference: [%s]", lastEntry.Ref)
+	if lastEntry == nil {
+		a.logDebugf("nothing to undo")
+		return nil
+	}
 
-	a.logDebugf("Last git command: %s", yellowColor+lastEntry.Command+resetColor)
+	a.logDebugf("Last git command[%s]: %s", lastEntry.Ref, yellowColor+lastEntry.Command+resetColor)
 
 	// Get the appropriate undoer
 	u := undoer.New(lastEntry.Command, a.git)
@@ -190,7 +243,7 @@ func (a *App) cmdHook(hookArg string) error {
 	a.logDebugf("hook: start")
 
 	if !a.IsInternalCall() {
-		return errors.New("hook must be called by the zsh script")
+		return errors.New("hook must be called from inside shell script (bash/zsh hook)")
 	}
 
 	hooked := strings.TrimSpace(strings.TrimPrefix(hookArg, "--hook"))
@@ -220,4 +273,67 @@ func (a *App) cmdHook(hookArg string) error {
 // cmdLog displays the git-undo command log.
 func (a *App) cmdLog() error {
 	return a.lgr.Dump(os.Stdout)
+}
+
+// SetEmbeddedScripts sets the embedded scripts for self-management commands.
+func SetEmbeddedScripts(app *App, updateScript, uninstallScript string) {
+	app.updateScript = updateScript
+	app.uninstallScript = uninstallScript
+}
+
+func (a *App) cmdSelfUpdate() error {
+	a.logDebugf("Running embedded self-update script...")
+	return a.runEmbeddedScript(a.updateScript, "update")
+}
+
+func (a *App) cmdSelfUninstall() error {
+	a.logDebugf("Running embedded self-uninstall script...")
+	return a.runEmbeddedScript(a.uninstallScript, "uninstall")
+}
+
+// runEmbeddedScript creates a temporary script file and executes it.
+func (a *App) runEmbeddedScript(script, name string) error {
+	if script == "" {
+		return fmt.Errorf("embedded %s script not available", name)
+	}
+
+	// Create temp file with proper extension
+	tmpFile, err := os.CreateTemp("", fmt.Sprintf("git-undo-%s-*.sh", name))
+	if err != nil {
+		return fmt.Errorf("failed to create temp script: %w", err)
+	}
+	defer func() {
+		// TODO: handle error: log warnings at least
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
+
+	// Write script content
+	if _, err := tmpFile.WriteString(script); err != nil {
+		return fmt.Errorf("failed to write script: %w", err)
+	}
+
+	// Close file before making it executable and running it
+	_ = tmpFile.Close()
+
+	// Make executable
+	//nolint:gosec // TODO: fix me in future
+	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
+		return fmt.Errorf("failed to make script executable: %w", err)
+	}
+
+	a.logDebugf("Executing embedded %s script...", name)
+
+	// Execute script
+	//nolint:gosec // TODO: fix me in future
+	cmd := exec.Command("bash", tmpFile.Name())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
+func (a *App) cmdVersion() error {
+	fmt.Fprintf(os.Stdout, "git-undo %s\n", a.buildVersion)
+	return nil
 }

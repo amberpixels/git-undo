@@ -31,8 +31,8 @@ func (s *GitTestSuite) SetupSuite() {
 	s.repoDir = tmp
 
 	// Initialize git repository
-	s.Git("init", ".")
-	s.Git("commit", "--allow-empty", "-m", "init")
+	s.RunCmd("git", "init", ".")
+	s.RunCmd("git", "commit", "--allow-empty", "-m", "init")
 }
 
 // TearDownSuite cleans up the temporary directory.
