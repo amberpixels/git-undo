@@ -39,9 +39,8 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if hasAllFlag || len(a.originalCmd.Args) == 0 {
 		if headExists {
 			return NewUndoCommand(a.git, "git restore --staged .", "Unstage all files"), nil
-		} else {
-			return NewUndoCommand(a.git, "git reset", "Unstage all files"), nil
 		}
+		return NewUndoCommand(a.git, "git reset", "Unstage all files"), nil
 	}
 
 	// For other cases, filter out flags and only pass real file paths to restore
@@ -57,9 +56,9 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if len(filesToRestore) == 0 {
 		if headExists {
 			return NewUndoCommand(a.git, "git restore --staged .", "Unstage all files"), nil
-		} else {
-			return NewUndoCommand(a.git, "git reset", "Unstage all files"), nil
 		}
+
+		return NewUndoCommand(a.git, "git reset", "Unstage all files"), nil
 	}
 
 	if headExists {
@@ -68,11 +67,10 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 			fmt.Sprintf("git restore --staged %s", strings.Join(filesToRestore, " ")),
 			fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
 		), nil
-	} else {
-		return NewUndoCommand(
-			a.git,
-			fmt.Sprintf("git reset %s", strings.Join(filesToRestore, " ")),
-			fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
-		), nil
 	}
+	return NewUndoCommand(
+		a.git,
+		fmt.Sprintf("git reset %s", strings.Join(filesToRestore, " ")),
+		fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
+	), nil
 }
