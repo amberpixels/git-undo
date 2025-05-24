@@ -16,7 +16,6 @@ import (
 type GitHelper interface {
 	GetCurrentGitRef() (string, error)
 	GetRepoGitDir() (string, error)
-	ValidateGitRepo() error
 
 	GitRun(subCmd string, args ...string) error
 	GitOutput(subCmd string, args ...string) (string, error)
@@ -138,7 +137,7 @@ func (a *App) Run(args []string) error {
 	}
 
 	// Ensure we're inside a Git repository for other commands
-	if err := a.git.ValidateGitRepo(); err != nil {
+	if _, err := a.git.GetRepoGitDir(); err != nil {
 		return err
 	}
 
