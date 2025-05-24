@@ -12,6 +12,9 @@ setup() {
     git init
     git config user.email "git-undo-test@amberpixels.io"
     git config user.name "Git-Undo Integration Test User"
+    
+    # Create initial empty commit so we always have HEAD (like in unit tests)
+    git commit --allow-empty -m "init"
 }
 
 teardown() {
@@ -155,10 +158,12 @@ teardown() {
     git add file1.txt
     git commit -m "Add file1.txt"
     
-    # Verify clean working directory
+    # Verify clean working directory (except for untracked files from previous phase)
     run git status --porcelain
     assert_success
-    assert_output ""
+    assert_output --partial "?? file2.txt"
+    assert_output --partial "?? file3.txt"
+    refute_output --partial "file1.txt"  # file1.txt should be committed, not in status
     
     # Verify file1 exists and is committed
     assert [ -f "file1.txt" ]
@@ -167,10 +172,12 @@ teardown() {
     git add file2.txt
     git commit -m "Add file2.txt"
     
-    # Verify clean working directory again
+    # Verify clean working directory again (only file3.txt should remain untracked)
     run git status --porcelain
     assert_success
-    assert_output ""
+    assert_output --partial "?? file3.txt"
+    refute_output --partial "file1.txt"  # file1.txt should be committed
+    refute_output --partial "file2.txt"  # file2.txt should be committed
     
     # First commit undo - should undo last commit, leaving file2 staged
     echo "# DEBUG: Checking git-undo log before commit undo..."
@@ -203,6 +210,7 @@ teardown() {
     run git status --porcelain
     assert_success
     assert_output --partial "?? file2.txt"
+    assert_output --partial "?? file3.txt"
     refute_output --partial "A  file2.txt"
     
     # ============================================================================
@@ -221,7 +229,7 @@ teardown() {
     # Verify modified file1 is staged
     run git status --porcelain
     assert_success
-    assert_output --partial "A  file1.txt"
+    assert_output --partial "M  file1.txt"
     
     # Create and stage a new file
     echo "content of file4" > file4.txt
@@ -230,7 +238,7 @@ teardown() {
     # Verify both staged
     run git status --porcelain
     assert_success
-    assert_output --partial "A  file1.txt"
+    assert_output --partial "M  file1.txt"
     assert_output --partial "A  file4.txt"
     
     # Undo staging of file4
@@ -245,7 +253,7 @@ teardown() {
     
     run git status --porcelain
     assert_success
-    assert_output --partial "A  file1.txt"  # file1 still staged
+    assert_output --partial "M  file1.txt"  # file1 still staged
     assert_output --partial "?? file4.txt"  # file4 unstaged
     refute_output --partial "A  file4.txt"
     
@@ -263,7 +271,7 @@ teardown() {
     assert_success
     assert_output --partial " M file1.txt"  # Modified but unstaged
     assert_output --partial "?? file4.txt"
-    refute_output --partial "A  file1.txt"
+    refute_output --partial "M  file1.txt"  # Should not be staged anymore
     
     # Undo commit of file3
     run git undo
