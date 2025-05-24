@@ -1,0 +1,49 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Determine integration test mode
+      id: test-mode
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "mode=production" >> $GITHUB_OUTPUT
+          echo "dockerfile=scripts/integration/Dockerfile" >> $GITHUB_OUTPUT
+          echo "description=real user experience (published releases)" >> $GITHUB_OUTPUT
+        else
+          echo "mode=development" >> $GITHUB_OUTPUT  
+          echo "dockerfile=scripts/integration/Dockerfile.dev" >> $GITHUB_OUTPUT
+          echo "description=current branch changes" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Build and run integration tests
+      run: |
+        echo "🧪 Integration test mode: ${{ steps.test-mode.outputs.mode }}"
+        echo "📝 Testing: ${{ steps.test-mode.outputs.description }}"
+        echo "🐳 Using dockerfile: ${{ steps.test-mode.outputs.dockerfile }}"
+        echo ""
+        
+        echo "Building integration test image..."
+        docker build -f "${{ steps.test-mode.outputs.dockerfile }}" -t git-undo-integration:ci .
+        
+        echo "Running integration tests..."
+        docker run --rm git-undo-integration:ci
+    
+    - name: Clean up Docker images
+      if: always()
+      run: |
+        docker rmi git-undo-integration:ci || true 

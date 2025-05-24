@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
-GRAY='\033[90m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; BLUE='\033[34m'; RESET='\033[0m'
-log() { echo -e "${GRAY}git-undo:${RESET} $1"; }
+# Source shared colors and basic logging
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/colors.sh"
 
+# Git-undo specific configuration
 BIN_NAME="git-undo"
 BIN_DIR=$(go env GOBIN 2>/dev/null || true)
 [[ -z "$BIN_DIR" ]] && BIN_DIR="$(go env GOPATH)/bin"

@@ -44,6 +44,24 @@ run: build
 test:
 	@go test -v ./...
 
+# Run integration tests in dev mode (test current changes)
+.PHONY: integration-test-dev  
+integration-test-dev:
+	@./scripts/run-integration.sh --dev
+
+# Run integration tests in production mode (test real user experience)
+.PHONY: integration-test-prod
+integration-test-prod:
+	@./scripts/run-integration.sh --prod
+
+# Run integration tests (alias for dev mode)
+.PHONY: integration-test
+integration-test: integration-test-dev
+
+# Run all tests (unit + integration dev)
+.PHONY: test-all
+test-all: test integration-test-dev
+
 # Tidy: format and vet the code
 .PHONY: tidy
 tidy:

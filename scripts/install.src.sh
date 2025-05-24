@@ -80,12 +80,28 @@ main() {
     # 1) Install the binary
     echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary..."
 
-    # Install the binary
-    if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
-        echo -e " ${GREEN}OK${RESET}"
+    # Check if we're in dev mode with local source available
+    if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
+        echo -e " ${YELLOW}(dev mode)${RESET}"
+        log "Building from local source using Makefile..."
+        
+        # Use Makefile's binary-install target which has proper version logic
+        if make binary-install; then
+            # Get the version that was just installed
+            INSTALLED_VERSION=$(git-undo --version 2>/dev/null | grep -o 'git-undo.*' || echo "unknown")
+            echo -e "${GRAY}git-undo:${RESET} Binary installed with version: ${BLUE}$INSTALLED_VERSION${RESET}"
+        else
+            echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
+            exit 1
+        fi
     else
-        echo -e " ${RED}FAILED${RESET}"
-        exit 1
+        # Normal user installation from GitHub
+        if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
+            echo -e " ${GREEN}OK${RESET}"
+        else
+            echo -e " ${RED}FAILED${RESET}"
+            exit 1
+        fi
     fi
 
     # 2) Shell integration

@@ -33,7 +33,19 @@ log_successful_git_command() {
 
 # Set up the DEBUG trap to capture commands before execution
 # This is Bash's equivalent to ZSH's preexec hook
-trap 'store_git_command "$BASH_COMMAND"' DEBUG
+# Skip trap setup if we're in a testing environment (bats interferes with DEBUG traps)
+if [[ -n "${BATS_TEST_FILENAME:-}" ]]; then
+    # Test mode: provide a manual way to capture commands
+    git() {
+        command git "$@"
+        if [[ $? -eq 0 && "$1" == "add" ]]; then
+            GIT_UNDO_INTERNAL_HOOK=1 command git-undo --hook="git $*"
+        fi
+    }
+else
+    # Normal mode: use DEBUG trap
+    trap 'store_git_command "$BASH_COMMAND"' DEBUG
+fi
 
 # Set up PROMPT_COMMAND to log successful commands after execution
 # This is Bash's equivalent to ZSH's precmd hook

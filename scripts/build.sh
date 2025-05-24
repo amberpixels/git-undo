@@ -3,6 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(dirname "$0")"
+COLORS_FILE="$SCRIPT_DIR/colors.sh"
 COMMON_FILE="$SCRIPT_DIR/common.sh"
 SRC_INSTALL="$SCRIPT_DIR/install.src.sh"
 SRC_UNINSTALL="$SCRIPT_DIR/uninstall.src.sh"
@@ -38,8 +39,11 @@ EOF
         # Replace the common.sh source line with actual content
         if [[ "$line" =~ source.*common\.sh ]]; then
             echo "# ── Inlined content from common.sh ──────────────────────────────────────────" >> "$out_file"
-            # Add common.sh content (skip shebang and comments)
-            tail -n +2 "$COMMON_FILE" | grep -v '^#.*Common configuration' >> "$out_file"
+            
+            # First inline colors.sh content (without shebang and without sourcing line)
+            tail -n +2 "$COLORS_FILE" | grep -v '^#!/' >> "$out_file"
+            tail -n +2 "$COMMON_FILE" | grep -v '^#!/' | grep -v 'source.*colors\.sh' | grep -v '^SCRIPT_DIR=' | grep -v '^#.*Source shared colors' >> "$out_file"
+            
             echo "# ── End of inlined content ──────────────────────────────────────────────────" >> "$out_file"
         else
             echo "$line" >> "$out_file"

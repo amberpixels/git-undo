@@ -2,6 +2,8 @@ module github.com/amberpixels/git-undo
 
 go 1.24
 
+toolchain go1.24.3
+
 require (
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/stretchr/testify v1.10.0

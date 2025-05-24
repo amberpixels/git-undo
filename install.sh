@@ -5,9 +5,40 @@ set -e
 
 # ── Inlined content from common.sh ──────────────────────────────────────────
 
-GRAY='\033[90m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; BLUE='\033[34m'; RESET='\033[0m'
-log() { echo -e "${GRAY}git-undo:${RESET} $1"; }
+# Color definitions - shared across all scripts
+GRAY='\033[90m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+RED='\033[31m'
+BLUE='\033[34m'
+RESET='\033[0m'
 
+# Alternative name for compatibility
+NC="$RESET"  # No Color (used in some scripts)
+
+# Basic logging functions
+log() { 
+    echo -e "${GRAY}git-undo:${RESET} $1"
+}
+
+log_info() {
+    echo -e "${BLUE}[INFO]${RESET} $*"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${RESET} $*"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${RESET} $*"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${RESET} $*"
+} 
+
+
+# Git-undo specific configuration
 BIN_NAME="git-undo"
 BIN_DIR=$(go env GOBIN 2>/dev/null || true)
 [[ -z "$BIN_DIR" ]] && BIN_DIR="$(go env GOPATH)/bin"
@@ -186,12 +217,28 @@ main() {
     # 1) Install the binary
     echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary..."
 
-    # Install the binary
-    if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
-        echo -e " ${GREEN}OK${RESET}"
+    # Check if we're in dev mode with local source available
+    if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
+        echo -e " ${YELLOW}(dev mode)${RESET}"
+        log "Building from local source using Makefile..."
+        
+        # Use Makefile's binary-install target which has proper version logic
+        if make binary-install; then
+            # Get the version that was just installed
+            INSTALLED_VERSION=$(git-undo --version 2>/dev/null | grep -o 'git-undo.*' || echo "unknown")
+            echo -e "${GRAY}git-undo:${RESET} Binary installed with version: ${BLUE}$INSTALLED_VERSION${RESET}"
+        else
+            echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
+            exit 1
+        fi
     else
-        echo -e " ${RED}FAILED${RESET}"
-        exit 1
+        # Normal user installation from GitHub
+        if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
+            echo -e " ${GREEN}OK${RESET}"
+        else
+            echo -e " ${RED}FAILED${RESET}"
+            exit 1
+        fi
     fi
 
     # 2) Shell integration

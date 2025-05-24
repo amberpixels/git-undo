@@ -243,7 +243,7 @@ func (a *App) cmdHook(hookArg string) error {
 	a.logDebugf("hook: start")
 
 	if !a.IsInternalCall() {
-		return errors.New("hook must be called by the zsh script")
+		return errors.New("hook must be called from inside shell script (bash/zsh hook)")
 	}
 
 	hooked := strings.TrimSpace(strings.TrimPrefix(hookArg, "--hook"))
