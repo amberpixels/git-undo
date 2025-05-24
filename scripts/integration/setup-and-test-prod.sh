@@ -2,6 +2,8 @@
 set -euo pipefail
 
 echo "Downloading and running install.sh like a real user..."
+
+export GIT_UNDO_TEST_MODE=true  # Use test hooks for integration tests
 # Download and run install.sh exactly like real users do
 curl -fsSL https://raw.githubusercontent.com/amberpixels/git-undo/main/install.sh | bash
 

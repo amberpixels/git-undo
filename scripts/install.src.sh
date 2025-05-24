@@ -38,6 +38,11 @@ install_shell_hook() {
             local hook_file="git-undo-hook.bash"
             local source_line="source ~/.config/git-undo/$hook_file"
 
+            # Use test hook in test environments (e.g., integration tests)
+            if [[ "${GIT_UNDO_TEST_MODE:-}" == "true" ]]; then
+                hook_file="git-undo-hook.test.bash"
+            fi
+
             # Copy the hook file and set permissions
             if [ ! -f "$BASH_HOOK" ]; then
                 cp "scripts/$hook_file" "$BASH_HOOK" 2>/dev/null || return 1

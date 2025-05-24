@@ -52,6 +52,12 @@ teardown() {
     assert [ -f ~/.config/git-undo/git-undo-hook.bash ]
     echo "# ✓ Hook file exists: ~/.config/git-undo/git-undo-hook.bash"
     
+    # Verify that the test hook is actually installed (should contain git function)
+    echo "# Checking if test hook is installed (contains git function)..."
+    run grep -q "git()" ~/.config/git-undo/git-undo-hook.bash
+    assert_success
+    echo "# ✓ Test hook confirmed: contains git function"
+    
     # Check if .bashrc has the source line
     echo "# Checking if .bashrc contains git-undo source line..."
     run grep -n git-undo ~/.bashrc

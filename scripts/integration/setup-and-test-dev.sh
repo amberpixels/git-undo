@@ -4,6 +4,7 @@ set -euo pipefail
 echo "DEV MODE: Installing git-undo from current source..."
 # Enable dev mode and install from local source
 export GIT_UNDO_DEV_MODE=true
+export GIT_UNDO_TEST_MODE=true  # Use test hooks for integration tests
 cd /home/testuser/git-undo-source
 chmod +x install.sh
 ./install.sh
