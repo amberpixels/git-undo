@@ -1,4 +1,4 @@
-package gitundo
+package gitundoembeds
 
 import (
 	_ "embed"

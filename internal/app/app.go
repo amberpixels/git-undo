@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	gitundo "github.com/amberpixels/git-undo"
+	"github.com/amberpixels/git-undo"
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/amberpixels/git-undo/internal/githelpers"
@@ -89,8 +89,8 @@ func (a *App) Run(args []string) (err error) {
 	}()
 
 	selfCtrl := NewSelfController(a.buildVersion, a.verbose).
-		AddScript(CommandUpdate, gitundo.GetUpdateScript()).
-		AddScript(CommandUninstall, gitundo.GetUninstallScript())
+		AddScript(CommandUpdate, gitundoembeds.GetUpdateScript()).
+		AddScript(CommandUninstall, gitundoembeds.GetUninstallScript())
 
 	if err := selfCtrl.HandleSelfCommand(args); err == nil {
 		return nil
