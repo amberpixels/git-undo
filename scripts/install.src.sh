@@ -3,6 +3,17 @@ set -e
 
 source "$(dirname "$0")/common.sh"
 
+# Function to write an embedded hook file
+write_embedded_hook() {
+    local target_file="$1"
+    local embedded_var="$2"
+    
+    # Decode the base64 embedded content and write it to the target file
+    echo "${!embedded_var}" | base64 -d > "$target_file" 2>/dev/null || return 1
+    chmod 644 "$target_file" 2>/dev/null || return 1
+    return 0
+}
+
 install_shell_hook() {
     local shell_type="$1"
     local is_noop=true
@@ -16,14 +27,12 @@ install_shell_hook() {
 
     case "$shell_type" in
         "zsh")
-            local hook_file="git-undo-hook.zsh"
             local rc_file="$HOME/.zshrc"
-            local source_line="source ~/.config/git-undo/$hook_file"
+            local source_line="source ~/.config/git-undo/git-undo-hook.zsh"
 
-            # Copy the hook file and set permissions
+            # Write the embedded hook file
             if [ ! -f "$ZSH_HOOK" ]; then
-                cp "scripts/$hook_file" "$ZSH_HOOK" 2>/dev/null || return 1
-                chmod 644 "$ZSH_HOOK" 2>/dev/null || return 1
+                write_embedded_hook "$ZSH_HOOK" "EMBEDDED_ZSH_HOOK" || return 1
                 is_noop=false
             fi
 
@@ -35,18 +44,17 @@ install_shell_hook() {
             ;;
 
         "bash")
-            local hook_file="git-undo-hook.bash"
-            local source_line="source ~/.config/git-undo/$hook_file"
+            local source_line="source ~/.config/git-undo/git-undo-hook.bash"
 
-            # Use test hook in test environments (e.g., integration tests)
+            # Determine which embedded hook to use
+            local embedded_var="EMBEDDED_BASH_HOOK"
             if [[ "${GIT_UNDO_TEST_MODE:-}" == "true" ]]; then
-                hook_file="git-undo-hook.test.bash"
+                embedded_var="EMBEDDED_BASH_TEST_HOOK"
             fi
 
-            # Copy the hook file and set permissions
+            # Write the embedded hook file
             if [ ! -f "$BASH_HOOK" ]; then
-                cp "scripts/$hook_file" "$BASH_HOOK" 2>/dev/null || return 1
-                chmod 644 "$BASH_HOOK" 2>/dev/null || return 1
+                write_embedded_hook "$BASH_HOOK" "$embedded_var" || return 1
                 is_noop=false
             fi
 
