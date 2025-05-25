@@ -188,6 +188,9 @@ func (a *App) Run(args []string) error {
 		return nil
 	}
 
+	// Check for updates in the background (only for normal undo operations)
+	a.AutoUpdate()
+
 	// Get the last git command
 	lastEntry, err := a.lgr.GetLastRegularEntry()
 	if err != nil {
