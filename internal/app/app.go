@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amberpixels/git-undo"
+	gitundoembeds "github.com/amberpixels/git-undo"
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/amberpixels/git-undo/internal/githelpers"
@@ -84,7 +84,7 @@ func (a *App) Run(args []string) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			a.logDebugf("git-undo panic recovery: %v", recovered)
-			err = fmt.Errorf("unexpected internal failure")
+			err = errors.New("unexpected internal failure")
 		}
 	}()
 

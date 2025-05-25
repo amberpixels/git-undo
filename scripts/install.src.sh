@@ -109,7 +109,7 @@ main() {
         fi
     else
         # Normal user installation from GitHub
-        if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
+        if go install "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
             echo -e " ${GREEN}OK${RESET}"
         else
             echo -e " ${RED}FAILED${RESET}"

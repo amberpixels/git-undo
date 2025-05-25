@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/amberpixels/git-undo/internal/app"
 )
 
-// Build-time version information
-// This can be set during build using: go build -ldflags "-X main.version=v1.0.0".
-var version = "dev"
+// version is set by the build ldflags
+// The default value is "dev+dirty" but it should never be used. In success path, it's always overwritten.
+var version = "dev+dirty"
 
 func main() {
 	var verbose, dryRun bool
@@ -22,6 +23,10 @@ func main() {
 		}
 	}
 
+	// When running binary that was installed via `go install`, here we'll get the proper version
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		version = bi.Main.Version
+	}
 	application := app.New(version, verbose, dryRun)
 
 	if err := application.Run(os.Args[1:]); err != nil {

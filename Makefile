@@ -10,20 +10,12 @@ MAIN_FILE := $(CMD_DIR)/main.go
 BINARY_NAME := git-undo
 INSTALL_DIR := $(shell go env GOPATH)/bin
 
-# Build version with git information
-VERSION_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-VERSION_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-VERSION_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-VERSION_DATE := $(shell date +%Y%m%d%H%M%S)
+# VERSION will be set when manually building from source
+# pseudo_version will return the same format as the Go does.
+VERSION  := $(shell ./scripts/pseudo_version.sh 2>/dev/null || echo "")
 
-# Conditionally include branch in version string
-ifeq ($(VERSION_BRANCH),main)
-VERSION := $(VERSION_TAG)-$(VERSION_DATE)-$(VERSION_COMMIT)
-else ifeq ($(VERSION_BRANCH),unknown)
-VERSION := $(VERSION_TAG)-$(VERSION_DATE)-$(VERSION_COMMIT)
-else
-VERSION := $(VERSION_TAG)-$(VERSION_DATE)-$(VERSION_COMMIT)-$(VERSION_BRANCH)
-endif
+# Only add the flag when VERSION isn’t empty
+LDFLAGS  := $(if $(strip $(VERSION)),-X "main.version=$(VERSION)")
 
 # Default target
 all: build
@@ -32,7 +24,7 @@ all: build
 .PHONY: build
 build:
 	@mkdir -p $(BUILD_DIR)
-	@go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_FILE)
+	@go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_FILE)
 
 # Run the binary
 .PHONY: run
