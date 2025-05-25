@@ -78,8 +78,15 @@ func (a *App) logWarnf(format string, args ...interface{}) {
 }
 
 // Run executes the main app logic.
-func (a *App) Run(args []string) error {
+func (a *App) Run(args []string) (err error) {
 	a.logDebugf("called in verbose mode")
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			a.logDebugf("git-undo panic recovery: %v", recovered)
+			err = fmt.Errorf("unexpected internal failure")
+		}
+	}()
 
 	selfCtrl := NewSelfController(a.buildVersion, a.verbose).
 		AddScript(CommandUpdate, gitundo.GetUpdateScript()).
