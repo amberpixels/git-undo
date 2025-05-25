@@ -121,7 +121,7 @@ func NewLogger(repoGitDir string, git GitHelper) *Logger {
 	lgr.logFile = filepath.Join(lgr.logDir, logFileName)
 
 	if err := EnsureLogDir(lgr.logDir); err != nil {
-		lgr.err = fmt.Errorf("failed to ensure log directory: %w", err)
+		return nil
 	}
 
 	return lgr

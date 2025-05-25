@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	gitundo "github.com/amberpixels/git-undo"
 	"github.com/amberpixels/git-undo/internal/app"
 	"github.com/amberpixels/git-undo/internal/testutil"
 	"github.com/stretchr/testify/suite"
@@ -44,7 +43,8 @@ func (s *GitTestSuite) SetupSuite() {
 	s.GitTestSuite.GitUndoHook = autoGitUndoHook
 	s.GitTestSuite.SetupSuite()
 
-	s.app = app.New(s.GetRepoDir(), testAppVersion, verbose, false)
+	s.app = app.New(testAppVersion, verbose, false)
+	app.SetupAppDir(s.app, s.GetRepoDir())
 	app.SetupInternalCall(s.app)
 	s.GitTestSuite.SetApplication(s.app)
 }
@@ -299,10 +299,7 @@ func (s *GitTestSuite) TestSelfCommands() {
 	// We'll just test that they don't error out and attempt to call the scripts
 
 	// Create a temporary app without git repo requirement for this test
-	testApp := app.New(".", testAppVersion, false, false) // not verbose, not dry run
-
-	// Set real embedded scripts for testing
-	app.SetEmbeddedScripts(testApp, gitundo.GetUpdateScript(), gitundo.GetUninstallScript())
+	testApp := app.New(testAppVersion, false, false) // not verbose, not dry run
 
 	// Test self update command - these will actually try to run the real scripts
 	// but should fail on network/permission issues rather than script issues
@@ -331,11 +328,8 @@ func (s *GitTestSuite) TestSelfCommandsParsing() {
 	tmpDir := s.T().TempDir()
 	_ = tmpDir
 	// Create an app pointing to the non-git directory
-	testApp := app.New(s.GetRepoDir(), testAppVersion, false, false)
+	testApp := app.New(testAppVersion, false, false)
 	s.Require().NotNil(testApp)
-
-	// Set real embedded scripts for testing
-	app.SetEmbeddedScripts(testApp, gitundo.GetUpdateScript(), gitundo.GetUninstallScript())
 
 	// These should attempt to run (and fail on script execution) rather than fail on git repo validation
 	testCases := [][]string{
@@ -356,10 +350,6 @@ func (s *GitTestSuite) TestSelfCommandsParsing() {
 
 // TestVersionCommands tests all the different ways to call the version command.
 func (s *GitTestSuite) TestVersionCommands() {
-	// Create a temporary directory that's NOT a git repo to test version commands work everywhere
-	testApp := app.New(s.GetRepoDir(), testAppVersion, false, false)
-	s.Require().NotNil(testApp)
-
 	// Test all version command variations
 	testCases := [][]string{
 		{"version"},
@@ -376,7 +366,7 @@ func (s *GitTestSuite) TestVersionCommands() {
 		setGlobalStdout(w)
 
 		// Run the version command
-		err = testApp.Run(args)
+		err = s.app.Run(args)
 
 		// Close writer and restore stdout
 		_ = w.Close()
@@ -400,7 +390,7 @@ func (s *GitTestSuite) TestVersionDetection() {
 	s.T().Skip("Skipping version detection test") // TODO: fix me in future
 
 	// Test with git version available (in actual git repo)
-	gitApp := app.New(s.GetRepoDir(), testAppVersion, false, false)
+	gitApp := app.New(testAppVersion, false, false)
 	s.Require().NotNil(gitApp)
 
 	// Capture stdout to check git version
@@ -425,7 +415,8 @@ func (s *GitTestSuite) TestVersionDetection() {
 
 	// Test with build version only (no git repo)
 	tmpDir := s.T().TempDir()
-	buildApp := app.New(tmpDir, testAppVersion, false, false)
+	buildApp := app.New(testAppVersion, false, false)
+	_ = tmpDir
 
 	r, w, err = os.Pipe()
 	s.Require().NoError(err)
@@ -445,7 +436,7 @@ func (s *GitTestSuite) TestVersionDetection() {
 	s.Contains(buildOutput, "git-undo v2.0.0-build", "Should show build version when no git")
 
 	// Test fallback to unknown
-	unknownApp := app.New(tmpDir, testAppVersion, false, false)
+	unknownApp := app.New(testAppVersion, false, false)
 	// Don't set build version
 
 	r, w, err = os.Pipe()
