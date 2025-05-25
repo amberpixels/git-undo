@@ -34,12 +34,12 @@ func NewGitHelper(repoDirArg ...string) *H {
 
 // execGitOutput executes a git command and returns its output as string.
 func (h *H) execGitOutput(subCmd string, args ...string) (string, error) {
-	gitArgs := append([]string{subCmd}, args...)
-	cmd := exec.Command("git", gitArgs...)
 	if h.repoDir == invalidRepoDir {
 		return "", errors.New("not a valid git repository")
 	}
 
+	gitArgs := append([]string{subCmd}, args...)
+	cmd := exec.Command("git", gitArgs...)
 	cmd.Dir = h.repoDir
 
 	output, err := cmd.Output()
@@ -52,15 +52,25 @@ func (h *H) execGitOutput(subCmd string, args ...string) (string, error) {
 
 // execGitRun executes a git command without output (via Run).
 func (h *H) execGitRun(subCmd string, args ...string) error {
-	gitArgs := append([]string{subCmd}, args...)
-	cmd := exec.Command("git", gitArgs...)
 	if h.repoDir == invalidRepoDir {
 		return errors.New("not a valid git repository")
 	}
 
+	gitArgs := append([]string{subCmd}, args...)
+	cmd := exec.Command("git", gitArgs...)
 	cmd.Dir = h.repoDir
 
 	return cmd.Run()
+}
+
+// validateGitRepo checks if the current directory is inside a git repository.
+func (h *H) validateGitRepo() (string, error) {
+	gitDir, err := h.execGitOutput("rev-parse", "--git-dir")
+	if err != nil {
+		return "", errors.New("not in a git repository")
+	}
+
+	return gitDir, nil
 }
 
 // GetCurrentGitRef returns the current ref (branch, tag, commit hash) in the repository.
@@ -86,9 +96,9 @@ func (h *H) GetCurrentGitRef() (string, error) {
 // GetRepoGitDir returns the path to the .git directory of current repository.
 func (h *H) GetRepoGitDir() (string, error) {
 	// Get the git directory (usually .git, but could be elsewhere in worktrees)
-	gitDir, err := h.execGitOutput("rev-parse", "--git-dir")
+	gitDir, err := h.validateGitRepo()
 	if err != nil {
-		return "", fmt.Errorf("failed to get git directory: %w", err)
+		return "", err
 	}
 
 	// If gitDir is not an absolute path, make it absolute relative to the repo root
@@ -104,19 +114,12 @@ func (h *H) GetRepoGitDir() (string, error) {
 	return gitDir, nil
 }
 
-// ValidateGitRepo checks if the current directory is inside a git repository.
-func (h *H) ValidateGitRepo() error {
-	if err := h.execGitRun("rev-parse", "--git-dir"); err != nil {
-		return errors.New("not in a git repository")
-	}
-
-	return nil
-}
-
+// GitRun executes a git command without output (via Run).
 func (h *H) GitRun(subCmd string, args ...string) error {
 	return h.execGitRun(subCmd, args...)
 }
 
+// GitOutput executes a git command and returns its output as string.
 func (h *H) GitOutput(subCmd string, args ...string) (string, error) {
 	return h.execGitOutput(subCmd, args...)
 }
