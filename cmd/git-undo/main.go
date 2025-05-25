@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	gitundo "github.com/amberpixels/git-undo"
 	"github.com/amberpixels/git-undo/internal/app"
 )
 
@@ -23,9 +22,7 @@ func main() {
 		}
 	}
 
-	application := app.New(".", version, verbose, dryRun)
-	// Set embedded scripts from root package
-	app.SetEmbeddedScripts(application, gitundo.GetUpdateScript(), gitundo.GetUninstallScript())
+	application := app.New(version, verbose, dryRun)
 
 	if err := application.Run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, redColor+"git-undo ❌: "+grayColor+err.Error()+resetColor)
