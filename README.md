@@ -118,6 +118,27 @@ Uninstall git-undo:
 git undo self uninstall
 ```
 
+### Auto-Update Feature
+
+git-undo includes an automatic update checker that runs in the background:
+
+- **Automatic checks**: Every 7 days when you run `git undo`, it checks for new releases
+- **Non-intrusive**: Runs in the background and only shows a notification if an update is available
+- **Smart timing**: Skips checks in verbose mode, dry-run mode, or for self-management commands
+- **Per-repository tracking**: Maintains separate update check timers for each git repository
+- **Fallback to global**: Uses global config when not in a git repository
+
+When an update is available, you'll see:
+```
+🔄 Update available: v1.2.3 → v1.3.0
+Run 'git undo self-update' to update
+```
+
+The auto-update feature:
+- Stores check timestamps in `.git/git-undo-autoupdate.json` (per-repo) or `~/.config/git-undo/autoupdate.json` (global)
+- Only makes network requests once every 7 days
+- Gracefully handles network failures without disrupting normal operation
+
 ## Supported Git Commands
 * `commit`
 * `add`
