@@ -58,6 +58,7 @@ VERSION_FILE="$CFG_DIR/version"
 
 REPO_OWNER="amberpixels"
 REPO_NAME="git-undo"
+GITHUB_REPO_URL="github.com/$REPO_OWNER/$REPO_NAME"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
 
@@ -235,7 +236,8 @@ main() {
     log "Starting installation..."
 
     # 1) Install the binary
-    echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary..."
+    GO_VERS=$(go version 2>/dev/null | awk '{print $3}' | sed -E 's/go([0-9] .[0-9] ).*/go-1/')
+    echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary (${BLUE}${GO_VERS:-go-unknown}${RESET}) ..."
 
     # Check if we're in dev mode with local source available
     if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
@@ -253,8 +255,9 @@ main() {
         fi
     else
         # Normal user installation from GitHub
-        if go install -ldflags "-X main.version=$(get_latest_version)" "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
-            echo -e " ${GREEN}OK${RESET}"
+        if go install "$GITHUB_REPO_URL/cmd/$BIN_NAME@latest" 2>/dev/null; then
+              BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/$BIN_NAME")
+              echo -e " ${GREEN}OK${RESET} (installed as ${BLUE}${BIN_PATH}${RESET})"
         else
             echo -e " ${RED}FAILED${RESET}"
             exit 1

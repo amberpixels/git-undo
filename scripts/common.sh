@@ -17,6 +17,7 @@ VERSION_FILE="$CFG_DIR/version"
 
 REPO_OWNER="amberpixels"
 REPO_NAME="git-undo"
+GITHUB_REPO_URL="github.com/$REPO_OWNER/$REPO_NAME"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
 
