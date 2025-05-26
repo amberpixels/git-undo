@@ -381,7 +381,7 @@ func (s *GitTestSuite) TestVersionCommands() {
 		output := string(outBytes)
 
 		// Should contain version
-		s.Contains(output, "git-undo v1.2.3-test", "Version command %v should output version", args)
+		s.Contains(output, "v1.2.3-test", "Version command %v should output version", args)
 	}
 }
 

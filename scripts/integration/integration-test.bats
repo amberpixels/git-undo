@@ -35,7 +35,7 @@ teardown() {
     # Test version command
     run git-undo --version
     assert_success
-    assert_output --partial "git-undo"
+    assert_output --partial "v0."
     
     # ============================================================================
     # HOOK DIAGNOSTICS: Debug hook installation and activation

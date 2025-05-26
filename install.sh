@@ -265,9 +265,9 @@ main() {
              log "Building from local source using Makefile..."
 
              # Use Makefile's binary-install target which has proper version logic
-             if make binary-install; then
+             if make binary-install &>/dev/null; then
                  # Get the version that was just installed
-                 INSTALLED_VERSION=$(git-undo --version 2>/dev/null | grep -o 'git-undo.*' || echo "unknown")
+                 INSTALLED_VERSION=$(git-undo --version 2>/dev/null  || echo "unknown")
                  echo -e "${GRAY}git-undo:${RESET} Binary installed with version: ${BLUE}$INSTALLED_VERSION${RESET}"
              else
                  echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
@@ -277,7 +277,8 @@ main() {
              # Normal user installation from GitHub
              if go install "$GITHUB_REPO_URL/cmd/$BIN_NAME@latest" 2>/dev/null; then
                    BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/$BIN_NAME")
-                   echo -e " ${GREEN}OK${RESET} (installed as ${BLUE}${BIN_PATH}${RESET})"
+                   INSTALLED_VERSION=$(git-undo --version 2>/dev/null  || echo "unknown")
+                   echo -e " ${GREEN}OK${RESET} (installed at ${BLUE}${BIN_PATH}${RESET} | version=${BLUE}${INSTALLED_VERSION}${RESET})"
              else
                  echo -e " ${RED}FAILED${RESET}"
                  exit 1
