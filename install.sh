@@ -235,33 +235,54 @@ install_shell_hook() {
 main() {
     log "Starting installation..."
 
-    # 1) Install the binary
-    GO_VERS=$(go version 2>/dev/null | awk '{print $3}' | sed -E 's/go([0-9] .[0-9] ).*/go-1/')
-    echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary (${BLUE}${GO_VERS:-go-unknown}${RESET}) ..."
+    local skip_binary=false
+    local detected_go="go-unknown"
 
-    # Check if we're in dev mode with local source available
-    if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
-        echo -e " ${YELLOW}(dev mode)${RESET}"
-        log "Building from local source using Makefile..."
-
-        # Use Makefile's binary-install target which has proper version logic
-        if make binary-install; then
-            # Get the version that was just installed
-            INSTALLED_VERSION=$(git-undo --version 2>/dev/null | grep -o 'git-undo.*' || echo "unknown")
-            echo -e "${GRAY}git-undo:${RESET} Binary installed with version: ${BLUE}$INSTALLED_VERSION${RESET}"
-        else
-            echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
-            exit 1
-        fi
+    if ! command -v go >/dev/null 2>&1; then
+        echo -e "${GRAY}git-undo:${RESET} 1. Installing Go binary... ${RED}FAILED${RESET} Go not found. ${RED}Go 1.22+ is required to build the binary.${RESET}"
+        skip_binary=true
     else
-        # Normal user installation from GitHub
-        if go install "$GITHUB_REPO_URL/cmd/$BIN_NAME@latest" 2>/dev/null; then
-              BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/$BIN_NAME")
-              echo -e " ${GREEN}OK${RESET} (installed as ${BLUE}${BIN_PATH}${RESET})"
-        else
-            echo -e " ${RED}FAILED${RESET}"
-            exit 1
+        # Extract major & minor (works for go1.xx and goX.YY)
+        local ver_raw ver_major ver_minor
+        ver_raw=$(go version | awk '{print $3}')       # e.g. go1.22.1
+        ver_major=$(printf '%s\n' "$ver_raw" | sed -E 's/go([0-9]+).*/\1/')
+        ver_minor=$(printf '%s\n' "$ver_raw" | sed -E 's/go[0-9]+\.([0-9]+).*/\1/')
+        detected_go="$ver_raw"
+
+        if  (( ver_major < 1 )) || { (( ver_major == 1 )) && (( ver_minor < 22 )); }; then
+            echo -e "${GRAY}git-undo:${RESET} 1. Installing Go binary... ${RED}FAILED${RESET} Detected Go ${YELLOW}${ver_raw}${RESET}, but Go ${RED}≥ 1.22${RESET} is required."
+            skip_binary=true
         fi
+    fi
+
+    if ! $skip_binary; then
+         # 1) Install the binary
+         echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary (${BLUE}${detected_go}${RESET}) ..."
+
+         # Check if we're in dev mode with local source available
+         if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
+             echo -e " ${YELLOW}(dev mode)${RESET}"
+             log "Building from local source using Makefile..."
+
+             # Use Makefile's binary-install target which has proper version logic
+             if make binary-install; then
+                 # Get the version that was just installed
+                 INSTALLED_VERSION=$(git-undo --version 2>/dev/null | grep -o 'git-undo.*' || echo "unknown")
+                 echo -e "${GRAY}git-undo:${RESET} Binary installed with version: ${BLUE}$INSTALLED_VERSION${RESET}"
+             else
+                 echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
+                 exit 1
+             fi
+         else
+             # Normal user installation from GitHub
+             if go install "$GITHUB_REPO_URL/cmd/$BIN_NAME@latest" 2>/dev/null; then
+                   BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/$BIN_NAME")
+                   echo -e " ${GREEN}OK${RESET} (installed as ${BLUE}${BIN_PATH}${RESET})"
+             else
+                 echo -e " ${RED}FAILED${RESET}"
+                 exit 1
+             fi
+         fi
     fi
 
     # 2) Shell integration
