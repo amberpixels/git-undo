@@ -94,27 +94,6 @@ main() {
     GO_VERS=$(go version 2>/dev/null | awk '{print $3}' | sed -E 's/go([0-9] .[0-9] ).*/go-1/')
     echo -en "${GRAY}git-undo:${RESET} 1. Installing Go binary (${BLUE}${GO_VERS:-go-unknown}${RESET}) ..."
 
-    if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
-        echo -e " ${YELLOW}(dev mode)${RESET}"
-        log "Building from local source using Makefile..."
-
-        if make binary-install; then
-            BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/git-undo")
-            echo -e "${GRAY}git-undo:${RESET} Binary installed at ${BLUE}${BIN_PATH}${RESET}"
-        else
-            echo -e "${GRAY}git-undo:${RESET} ${RED}Failed to build from source using Makefile${RESET}"
-            exit 1
-        fi
-    else
-        if go install "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
-            BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/git-undo")
-            echo -e " ${GREEN}OK${RESET} (installed at ${BLUE}${BIN_PATH}${RESET})"
-        else
-            echo -e " ${RED}FAILED${RESET}"
-            exit 1
-        fi
-    fi
-
     # Check if we're in dev mode with local source available
     if [[ "${GIT_UNDO_DEV_MODE:-}" == "true" && -d "./cmd/git-undo" && -f "./Makefile" ]]; then
         echo -e " ${YELLOW}(dev mode)${RESET}"
@@ -132,7 +111,8 @@ main() {
     else
         # Normal user installation from GitHub
         if go install "github.com/$REPO_OWNER/$REPO_NAME/cmd/git-undo@latest" 2>/dev/null; then
-            echo -e " ${GREEN}OK${RESET}"
+            BIN_PATH=$(command -v git-undo || echo "$BIN_DIR/git-undo")
+            echo -e " ${GREEN}OK${RESET} (installed as ${BLUE}${BIN_PATH}${RESET})"
         else
             echo -e " ${RED}FAILED${RESET}"
             exit 1
