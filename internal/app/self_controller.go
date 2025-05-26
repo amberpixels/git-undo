@@ -107,7 +107,7 @@ func (sc *SelfController) ExtractSelfCommand(args []string) string {
 
 // cmdVersion displays the version information.
 func (sc *SelfController) cmdVersion() error {
-	fmt.Fprintf(os.Stdout, "git-undo %s\n", sc.buildVersion)
+	fmt.Fprintf(os.Stdout, "%s\n", sc.buildVersion)
 	return nil
 }
 
