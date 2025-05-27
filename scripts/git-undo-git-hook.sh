@@ -43,5 +43,9 @@ case "$hook_name" in
         ;;
 esac
 
+# Set markers to help git-undo distinguish git hooks from shell hooks
+export GIT_UNDO_GIT_HOOK_MARKER=1
+export GIT_HOOK_NAME="$hook_name"
+
 # Re-use your existing internal flag so the Go binary accepts the call.
 GIT_UNDO_INTERNAL_HOOK=1 exec git-undo --hook="$cmd" 2>/dev/null || true
