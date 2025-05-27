@@ -43,12 +43,12 @@ main() {
     # 2) Clean shell configuration files
     echo -en "${GRAY}git-undo:${RESET} 2. Cleaning shell configurations..."
     local cleaned_files=0
-    
+
     # Check each rc file and count successful cleanings
     scrub_rc "$HOME/.zshrc" && ((cleaned_files++)) || true
     scrub_rc "$HOME/.bashrc" && ((cleaned_files++)) || true
     scrub_rc "$HOME/.bash_profile" && ((cleaned_files++)) || true
-    
+
     if [ $cleaned_files -gt 0 ]; then
         echo -e " ${GREEN}OK${RESET} ($cleaned_files files)"
     else
@@ -64,7 +64,22 @@ main() {
         echo -e " ${YELLOW}SKIP${RESET} (not found)"
     fi
 
-    # 4) Final message
+    # # 4) Git hooks
+    # echo -en "${GRAY}git-undo:${RESET} 4. Cleaning git hooks…"
+    # if [[ "$(git config --global --get core.hooksPath)" == "$GIT_UNDO_HOOKS_DIR" ]]; then
+    #     git config --global --unset core.hooksPath
+    # fi
+
+    # for h in post-commit post-merge; do
+    #     for dir in "$GIT_UNDO_HOOKS_DIR" "$(git config --global --get core.hooksPath 2>/dev/null || true)"; do
+    #         [[ -z "$dir" ]] && continue
+    #         rm -f "$dir/$h"
+    #     done
+    # done
+    # rm -f "$DISPATCHER_FILE"
+    # echo -e " ${GREEN}OK${RESET}"
+
+    # 5) Final message
     log "${GREEN}Uninstallation completed successfully!${RESET}"
 }
 
