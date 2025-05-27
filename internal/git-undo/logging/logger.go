@@ -157,6 +157,10 @@ func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
 	normalizedTime := time.Now().Truncate(2 * time.Second)
 	cmdIdentifier := l.createCommandIdentifier(strGitCommand, ref, normalizedTime)
 
+	// Debug: show normalization
+	normalizedCmd := l.normalizeGitCommand(strGitCommand)
+	fmt.Printf("DEBUG: Original='%s', Normalized='%s', ID='%s'\n", strGitCommand, normalizedCmd, cmdIdentifier)
+
 	// Check if we're in a git hook (vs shell hook)
 	isGitHook := l.isGitHookContext()
 	fmt.Println("IS GIT HOOK", isGitHook)
@@ -184,10 +188,162 @@ func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
 
 // createCommandIdentifier creates a short identifier for a command to detect duplicates
 func (l *Logger) createCommandIdentifier(command, ref string, timestamp time.Time) string {
-	// Create hash of command + ref + truncated timestamp
-	data := fmt.Sprintf("%s|%s|%d", command, ref, timestamp.Unix())
+	// Normalize the command first to ensure equivalent commands have the same identifier
+	normalizedCmd := l.normalizeGitCommand(command)
+
+	// Create hash of normalized command + ref + truncated timestamp
+	data := fmt.Sprintf("%s|%s|%d", normalizedCmd, ref, timestamp.Unix())
 	hash := md5.Sum([]byte(data))
 	return hex.EncodeToString(hash[:])[:12] // Use first 12 characters
+}
+
+// normalizeGitCommand converts git commands to a canonical form for comparison
+func (l *Logger) normalizeGitCommand(cmd string) string {
+	// Parse the command
+	parts := strings.Fields(cmd)
+	if len(parts) < 2 || parts[0] != "git" {
+		return cmd
+	}
+
+	subcommand := parts[1]
+	args := parts[2:]
+
+	switch subcommand {
+	case "commit":
+		return l.normalizeCommitCommand(args)
+	case "merge":
+		return l.normalizeMergeCommand(args)
+	case "rebase":
+		return l.normalizeRebaseCommand(args)
+	case "cherry-pick":
+		return l.normalizeCherryPickCommand(args)
+	// Add other commands as needed
+	default:
+		// For unknown commands, just return the basic form
+		return fmt.Sprintf("git %s", subcommand)
+	}
+}
+
+// normalizeCommitCommand normalizes commit commands to canonical form
+func (l *Logger) normalizeCommitCommand(args []string) string {
+	message := ""
+	amend := false
+
+	// Parse arguments to extract key information
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-m" && i+1 < len(args):
+			// Extract message, removing quotes
+			message = strings.Trim(args[i+1], `"'`)
+			i++ // Skip the message argument
+		case arg == "--amend":
+			amend = true
+		case strings.HasPrefix(arg, "-m"):
+			// Handle -m"message" format
+			if len(arg) > 2 {
+				message = strings.Trim(arg[2:], `"'`)
+			}
+			// Ignore other flags like --verbose, --signoff, etc.
+		}
+	}
+
+	// Build normalized command
+	if amend {
+		return "git commit --amend"
+	} else if message != "" {
+		return fmt.Sprintf("git commit -m %q", message)
+	} else {
+		return "git commit"
+	}
+}
+
+// normalizeMergeCommand normalizes merge commands to canonical form
+func (l *Logger) normalizeMergeCommand(args []string) string {
+	squash := false
+	noFf := false
+	ff := false
+	branch := ""
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--squash":
+			squash = true
+		case "--no-ff":
+			noFf = true
+		case "--ff":
+			ff = true
+		case "--ff-only":
+			ff = true
+		default:
+			// Assume it's a branch name if it doesn't start with -
+			if !strings.HasPrefix(arg, "-") && branch == "" {
+				branch = arg
+			}
+		}
+	}
+
+	// Build normalized command
+	cmd := "git merge"
+	if squash {
+		cmd += " --squash"
+	} else if noFf {
+		cmd += " --no-ff"
+	} else if ff {
+		cmd += " --ff"
+	}
+
+	if branch != "" {
+		cmd += " " + branch
+	}
+
+	return cmd
+}
+
+// normalizeRebaseCommand normalizes rebase commands to canonical form
+func (l *Logger) normalizeRebaseCommand(args []string) string {
+	interactive := false
+	branch := ""
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "-i", "--interactive":
+			interactive = true
+		default:
+			if !strings.HasPrefix(arg, "-") && branch == "" {
+				branch = arg
+			}
+		}
+	}
+
+	cmd := "git rebase"
+	if interactive {
+		cmd += " -i"
+	}
+	if branch != "" {
+		cmd += " " + branch
+	}
+
+	return cmd
+}
+
+// normalizeCherryPickCommand normalizes cherry-pick commands to canonical form
+func (l *Logger) normalizeCherryPickCommand(args []string) string {
+	commit := ""
+
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") && commit == "" {
+			commit = arg
+			break
+		}
+	}
+
+	if commit != "" {
+		return "git cherry-pick " + commit
+	}
+	return "git cherry-pick"
 }
 
 // isGitHookContext detects if we're running in a git hook context
