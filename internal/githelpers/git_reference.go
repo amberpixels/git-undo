@@ -1,51 +1,8 @@
 package githelpers
 
 import (
-	"errors"
-	"fmt"
 	"strings"
-
-	"github.com/mattn/go-shellwords"
 )
-
-func IsReadOnlyGitCommand(command string) bool {
-	parsed := ParseGitCommand(command)
-	return parsed.Valid && parsed.IsReadOnly
-}
-
-type CommandType int
-
-const (
-	UnknownCommand CommandType = iota
-	Porcelain
-	Plumbing
-	Custom
-)
-
-func (ct CommandType) String() string {
-	switch ct {
-	case Porcelain:
-		return "Porcelain"
-	case Plumbing:
-		return "Plumbing"
-	case Custom:
-		return "Custom"
-	case UnknownCommand:
-		fallthrough
-	default:
-		return "Unknown"
-	}
-}
-
-// GitCommand represents a parsed "git …" invocation.
-type GitCommand struct {
-	Name          string      // e.g. "branch"
-	Args          []string    // flags and operands
-	Valid         bool        // was Name in our lookup?
-	Type          CommandType // Porcelain, Plumbing, or Unknown
-	IsReadOnly    bool
-	ValidationErr error // any parse / lookup error
-}
 
 // Suggested name for the new field: IsReadOnly
 //
@@ -223,51 +180,4 @@ func isReadOnlyCommand(name string, args []string) bool {
 
 	// If we get here, it's either not a mutating command or all arguments are flags
 	return true
-}
-
-// ParseGitCommand parses a git command string into a GitCommand struct.
-func ParseGitCommand(raw string) *GitCommand {
-	w := shellwords.NewParser()
-	parts, err := w.Parse(raw)
-	if err != nil {
-		return &GitCommand{ValidationErr: fmt.Errorf("split error: %w", err)}
-	}
-	if len(parts) < 2 || parts[0] != "git" {
-		return &GitCommand{ValidationErr: errors.New("not a git command")}
-	}
-
-	name := parts[1]
-	args := parts[2:]
-
-	// Special handling for git undo --hook
-	if name == "undo" {
-		for _, arg := range args {
-			if arg == "--hook" {
-				return &GitCommand{
-					Name:          name,
-					Args:          args,
-					Valid:         false,
-					Type:          Custom,
-					IsReadOnly:    false,
-					ValidationErr: errors.New("hook command not allowed"),
-				}
-			}
-		}
-	}
-
-	typ, ok := lookup[name]
-
-	return &GitCommand{
-		Name:  name,
-		Args:  args,
-		Valid: ok,
-		Type: func() CommandType {
-			if ok {
-				return typ
-			}
-			return UnknownCommand
-		}(),
-		IsReadOnly:    isReadOnlyCommand(name, args),
-		ValidationErr: nil,
-	}
 }
