@@ -141,14 +141,12 @@ func (a *App) Run(args []string) (err error) {
 		}
 
 		// Execute the original command
-		gitCmd := githelpers.ParseGitCommand(lastEntry.Command)
-		if !gitCmd.Valid {
-			var validationErr = errors.New("invalid command")
-			if gitCmd.ValidationErr != nil {
-				validationErr = gitCmd.ValidationErr
-			}
-
-			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastEntry.Command, validationErr)
+		gitCmd, err := githelpers.ParseGitCommand(lastEntry.Command)
+		if err != nil {
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastEntry.Command, err)
+		}
+		if !gitCmd.Supported {
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: not supported", lastEntry.Command)
 		}
 
 		if err := g.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
@@ -219,13 +217,13 @@ func (a *App) cmdHook(lgr *logging.Logger, hookArg string) error {
 	hooked := strings.TrimSpace(strings.TrimPrefix(hookArg, "--hook"))
 	hooked = strings.TrimSpace(strings.TrimPrefix(hooked, "="))
 
-	gitCmd := githelpers.ParseGitCommand(hooked)
-	if !gitCmd.Valid {
+	gitCmd, err := githelpers.ParseGitCommand(hooked)
+	if err != nil || !gitCmd.Supported {
 		// This should not happen in a success path
 		// because the zsh script should only send non-failed (so valid) git command
 		// but just in case let's re-validate again here
 		a.logDebugf("hook: skipping as invalid git command %q", hooked)
-		return nil
+		return nil //nolint:nilerr // We're fine with this
 	}
 	if gitCmd.IsReadOnly {
 		a.logDebugf("hook: skipping as a read-only command: %q", hooked)

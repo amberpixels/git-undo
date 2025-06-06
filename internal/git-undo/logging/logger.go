@@ -2,7 +2,7 @@ package logging
 
 import (
 	"bufio"
-	"crypto/md5"
+	"crypto/sha1" //nolint:gosec // We're fine with this
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
 // Logger manages git command logging operations.
@@ -150,33 +152,23 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	return l.logCommandWithDedup(strGitCommand, ref)
 }
 
-// logCommandWithDedup logs a command while preventing duplicates between shell and git hooks
+// logCommandWithDedup logs a command while preventing duplicates between shell and git hooks.
 func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
 	// Create a unique identifier for this command + timestamp (within 2 seconds)
 	// This allows us to detect and prevent duplicates between shell and git hooks
 	normalizedTime := time.Now().Truncate(2 * time.Second)
 	cmdIdentifier := l.createCommandIdentifier(strGitCommand, ref, normalizedTime)
 
-	// Debug: show normalization
-	normalizedCmd := l.normalizeGitCommand(strGitCommand)
-	fmt.Printf("DEBUG: Original='%s', Normalized='%s', ID='%s'\n", strGitCommand, normalizedCmd, cmdIdentifier)
-
 	// Check if we're in a git hook (vs shell hook)
 	isGitHook := l.isGitHookContext()
-	fmt.Println("IS GIT HOOK", isGitHook)
 
 	if isGitHook {
-		fmt.Println("GIT HOOK: MARK LOGGED -- ", strGitCommand)
 		// Git hook runs first: mark that we're logging this command
 		l.markLoggedByGitHook(cmdIdentifier)
-	} else {
+	} else if l.wasRecentlyLoggedByGitHook(cmdIdentifier) {
 		// Shell hook runs second: check if git hook already logged this command
-		if l.wasRecentlyLoggedByGitHook(cmdIdentifier) {
-			fmt.Println("GIT HOOK ALREADY LOGGED THIS")
-			// Git hook already logged this, skip to avoid duplicate
-			return nil
-		}
-		fmt.Println("SHELL HOOK: LOGGING (NO GIT HOOK FOUND) -- ", strGitCommand)
+		// Git hook already logged this, skip to avoid duplicate
+		return nil
 	}
 
 	return l.prependLogEntry((&Entry{
@@ -186,168 +178,38 @@ func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
 	}).String())
 }
 
-// createCommandIdentifier creates a short identifier for a command to detect duplicates
+// createCommandIdentifier creates a short identifier for a command to detect duplicates.
 func (l *Logger) createCommandIdentifier(command, ref string, timestamp time.Time) string {
 	// Normalize the command first to ensure equivalent commands have the same identifier
 	normalizedCmd := l.normalizeGitCommand(command)
 
 	// Create hash of normalized command + ref + truncated timestamp
 	data := fmt.Sprintf("%s|%s|%d", normalizedCmd, ref, timestamp.Unix())
-	hash := md5.Sum([]byte(data))
+	hash := sha1.Sum([]byte(data))          //nolint:gosec // We're fine with this
 	return hex.EncodeToString(hash[:])[:12] // Use first 12 characters
 }
 
-// normalizeGitCommand converts git commands to a canonical form for comparison
+// normalizeGitCommand converts git commands to a canonical form for comparison.
 func (l *Logger) normalizeGitCommand(cmd string) string {
-	// Parse the command
-	parts := strings.Fields(cmd)
-	if len(parts) < 2 || parts[0] != "git" {
+	// Parse the command using the proper GitCommand parser
+	gitCmd, err := githelpers.ParseGitCommand(cmd)
+	if err != nil {
+		// If parsing fails, return original command
 		return cmd
 	}
 
-	subcommand := parts[1]
-	args := parts[2:]
-
-	switch subcommand {
-	case "commit":
-		return l.normalizeCommitCommand(args)
-	case "merge":
-		return l.normalizeMergeCommand(args)
-	case "rebase":
-		return l.normalizeRebaseCommand(args)
-	case "cherry-pick":
-		return l.normalizeCherryPickCommand(args)
-	// Add other commands as needed
-	default:
-		// For unknown commands, just return the basic form
-		return fmt.Sprintf("git %s", subcommand)
-	}
-}
-
-// normalizeCommitCommand normalizes commit commands to canonical form
-func (l *Logger) normalizeCommitCommand(args []string) string {
-	message := ""
-	amend := false
-
-	// Parse arguments to extract key information
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-m" && i+1 < len(args):
-			// Extract message, removing quotes
-			message = strings.Trim(args[i+1], `"'`)
-			i++ // Skip the message argument
-		case arg == "--amend":
-			amend = true
-		case strings.HasPrefix(arg, "-m"):
-			// Handle -m"message" format
-			if len(arg) > 2 {
-				message = strings.Trim(arg[2:], `"'`)
-			}
-			// Ignore other flags like --verbose, --signoff, etc.
-		}
+	// Attempt to normalize the command
+	normalizedStr, err := gitCmd.NormalizedString()
+	if err != nil {
+		// If normalization fails (e.g., command not supported), return original
+		return cmd
 	}
 
-	// Build normalized command
-	if amend {
-		return "git commit --amend"
-	} else if message != "" {
-		return fmt.Sprintf("git commit -m %q", message)
-	} else {
-		return "git commit"
-	}
-}
-
-// normalizeMergeCommand normalizes merge commands to canonical form
-func (l *Logger) normalizeMergeCommand(args []string) string {
-	squash := false
-	noFf := false
-	ff := false
-	branch := ""
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "--squash":
-			squash = true
-		case "--no-ff":
-			noFf = true
-		case "--ff":
-			ff = true
-		case "--ff-only":
-			ff = true
-		default:
-			// Assume it's a branch name if it doesn't start with -
-			if !strings.HasPrefix(arg, "-") && branch == "" {
-				branch = arg
-			}
-		}
-	}
-
-	// Build normalized command
-	cmd := "git merge"
-	if squash {
-		cmd += " --squash"
-	} else if noFf {
-		cmd += " --no-ff"
-	} else if ff {
-		cmd += " --ff"
-	}
-
-	if branch != "" {
-		cmd += " " + branch
-	}
-
-	return cmd
-}
-
-// normalizeRebaseCommand normalizes rebase commands to canonical form
-func (l *Logger) normalizeRebaseCommand(args []string) string {
-	interactive := false
-	branch := ""
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "-i", "--interactive":
-			interactive = true
-		default:
-			if !strings.HasPrefix(arg, "-") && branch == "" {
-				branch = arg
-			}
-		}
-	}
-
-	cmd := "git rebase"
-	if interactive {
-		cmd += " -i"
-	}
-	if branch != "" {
-		cmd += " " + branch
-	}
-
-	return cmd
-}
-
-// normalizeCherryPickCommand normalizes cherry-pick commands to canonical form
-func (l *Logger) normalizeCherryPickCommand(args []string) string {
-	commit := ""
-
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") && commit == "" {
-			commit = arg
-			break
-		}
-	}
-
-	if commit != "" {
-		return "git cherry-pick " + commit
-	}
-	return "git cherry-pick"
+	return normalizedStr
 }
 
 // isGitHookContext detects if we're running in a git hook context
-// We do this by checking the call stack environment rather than relying on order
+// We do this by checking the call stack environment rather than relying on order.
 func (l *Logger) isGitHookContext() bool {
 	// Method 1: Check if we're called from the git hook script
 	// Our git hook script sets a special marker
@@ -370,37 +232,37 @@ func (l *Logger) isGitHookContext() bool {
 	return false
 }
 
-// wasRecentlyLoggedByShellHook checks if this command was recently logged by shell hook
-func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
-	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+// // wasRecentlyLoggedByShellHook checks if this command was recently logged by shell hook.
+// func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
+// 	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
 
-	// Check if flag file exists and is recent (within last 10 seconds)
-	if stat, err := os.Stat(flagFile); err == nil {
-		age := time.Since(stat.ModTime())
-		if age < 10*time.Second {
-			return true
-		}
-		// Clean up old flag file
-		_ = os.Remove(flagFile)
-	}
+// 	// Check if flag file exists and is recent (within last 10 seconds)
+// 	if stat, err := os.Stat(flagFile); err == nil {
+// 		age := time.Since(stat.ModTime())
+// 		if age < 10*time.Second {
+// 			return true
+// 		}
+// 		// Clean up old flag file
+// 		_ = os.Remove(flagFile)
+// 	}
 
-	return false
-}
+// 	return false
+// }
 
-// markLoggedByShellHook marks that this command was logged by shell hook
-func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
-	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+// // markLoggedByShellHook marks that this command was logged by shell hook.
+// func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
+// 	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
 
-	// Create flag file
-	if file, err := os.Create(flagFile); err == nil {
-		file.Close()
-	}
+// 	// Create flag file
+// 	if file, err := os.Create(flagFile); err == nil {
+// 		file.Close()
+// 	}
 
-	// Clean up old flag files in background (best effort)
-	go l.cleanupOldFlagFiles()
-}
+// 	// Clean up old flag files in background (best effort)
+// 	go l.cleanupOldFlagFiles()
+// }
 
-// cleanupOldFlagFiles removes flag files older than 30 seconds
+// cleanupOldFlagFiles removes flag files older than 30 seconds.
 func (l *Logger) cleanupOldFlagFiles() {
 	entries, err := os.ReadDir(l.logDir)
 	if err != nil {
@@ -420,7 +282,7 @@ func (l *Logger) cleanupOldFlagFiles() {
 	}
 }
 
-// wasRecentlyLoggedByGitHook checks if this command was recently logged by git hook
+// wasRecentlyLoggedByGitHook checks if this command was recently logged by git hook.
 func (l *Logger) wasRecentlyLoggedByGitHook(cmdIdentifier string) bool {
 	flagFile := filepath.Join(l.logDir, ".git-hook-"+cmdIdentifier)
 
@@ -437,13 +299,13 @@ func (l *Logger) wasRecentlyLoggedByGitHook(cmdIdentifier string) bool {
 	return false
 }
 
-// markLoggedByGitHook marks that this command was logged by git hook
+// markLoggedByGitHook marks that this command was logged by git hook.
 func (l *Logger) markLoggedByGitHook(cmdIdentifier string) {
 	flagFile := filepath.Join(l.logDir, ".git-hook-"+cmdIdentifier)
 
 	// Create flag file
 	if file, err := os.Create(flagFile); err == nil {
-		file.Close()
+		_ = file.Close()
 	}
 
 	// Clean up old flag files in background (best effort)
