@@ -4,15 +4,18 @@ GOLANGCI_LINT := $(shell which golangci-lint)
 PKGS := $(shell go list ./...)
 
 BUILD_DIR := build
-CMD_DIR = ./cmd/git-undo
-MAIN_FILE := $(CMD_DIR)/main.go
+CMD_UNDO_DIR = ./cmd/git-undo
+CMD_BACK_DIR = ./cmd/git-back
+UNDO_MAIN_FILE := $(CMD_UNDO_DIR)/main.go
+BACK_MAIN_FILE := $(CMD_BACK_DIR)/main.go
 
-BINARY_NAME := git-undo
+UNDO_BINARY_NAME := git-undo
+BACK_BINARY_NAME := git-back
 INSTALL_DIR := $(shell go env GOPATH)/bin
 
 # VERSION will be set when manually building from source
 # pseudo_version will return the same format as the Go does.
-VERSION  := $(shell ./scripts/pseudo_version.sh 2>/dev/null || echo "")
+VERSION  := $(shell ./scripts/src/pseudo_version.sh 2>/dev/null || echo "")
 
 # Only add the flag when VERSION isn’t empty
 LDFLAGS  := $(if $(strip $(VERSION)),-X "main.version=$(VERSION)")
@@ -20,16 +23,31 @@ LDFLAGS  := $(if $(strip $(VERSION)),-X "main.version=$(VERSION)")
 # Default target
 all: build
 
-# Build the binary
+# Build both binaries
 .PHONY: build
-build:
-	@mkdir -p $(BUILD_DIR)
-	@go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_FILE)
+build: build-undo build-back
 
-# Run the binary
+# Build the git-undo binary
+.PHONY: build-undo
+build-undo:
+	@mkdir -p $(BUILD_DIR)
+	@go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(UNDO_BINARY_NAME) $(UNDO_MAIN_FILE)
+
+# Build the git-back binary
+.PHONY: build-back
+build-back:
+	@mkdir -p $(BUILD_DIR)
+	@go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BACK_BINARY_NAME) $(BACK_MAIN_FILE)
+
+# Run the git-undo binary
 .PHONY: run
-run: build
-	./$(BUILD_DIR)/$(BINARY_NAME)
+run: build-undo
+	./$(BUILD_DIR)/$(UNDO_BINARY_NAME)
+
+# Run the git-back binary
+.PHONY: run-back
+run-back: build-back
+	./$(BUILD_DIR)/$(BACK_BINARY_NAME)
 
 # Run tests
 .PHONY: test
@@ -37,7 +55,7 @@ test:
 	@go test -v ./...
 
 # Run integration tests in dev mode (test current changes)
-.PHONY: integration-test-dev  
+.PHONY: integration-test-dev
 integration-test-dev:
 	@./scripts/run-integration.sh --dev
 
@@ -80,24 +98,41 @@ sc:
 	@echo "Running shellcheck on all shell scripts..."
 	@find scripts/ -name "*.sh" -o -name "*.bash" -o -name "*.zsh" | xargs shellcheck || true
 
-# Install the binary globally with custom version info
+# Install both binaries globally with custom version info
 .PHONY: binary-install
-binary-install:
-	@echo "Installing git-undo with version: $(VERSION)"
-	@go install -ldflags "-X main.version=$(VERSION)" $(CMD_DIR)
+binary-install: binary-install-undo binary-install-back
 
+# Install git-undo binary globally
+.PHONY: binary-install-undo
+binary-install-undo:
+	@echo "Installing git-undo with version: $(VERSION)"
+	@go install -ldflags "-X main.version=$(VERSION)" $(CMD_UNDO_DIR)
+
+# Install git-back binary globally
+.PHONY: binary-install-back
+binary-install-back:
+	@echo "Installing git-back with version: $(VERSION)"
+	@go install -ldflags "-X main.version=$(VERSION)" $(CMD_BACK_DIR)
+
+# Install with support for verbose flag
 .PHONY: install
 install:
 	./install.sh
+
+# Install with verbose output
+.PHONY: install-verbose
+install-verbose:
+	./install.sh --verbose
 
 .PHONY: uninstall
 uninstall:
 	./uninstall.sh
 
-# Uninstall the binary and remove the alias
+# Uninstall both binaries
 .PHONY: binary-uninstall
 binary-uninstall:
-	rm -f $(INSTALL_DIR)/$(BINARY_NAME)
+	rm -f $(INSTALL_DIR)/$(UNDO_BINARY_NAME)
+	rm -f $(INSTALL_DIR)/$(BACK_BINARY_NAME)
 
 .PHONY: buildscripts
 buildscripts:

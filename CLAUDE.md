@@ -122,7 +122,7 @@ User runs `git undo` → App.Run() → Undoer Factory → Command-specific Undoe
 
 #### Installation Process
 1. **Binary**: Installs to `$(go env GOPATH)/bin`
-2. **Git Hooks**: 
+2. **Git Hooks**:
    - Sets global `core.hooksPath` to `~/.config/git-undo/hooks/` OR
    - Integrates with existing hooks by appending to existing hook files
    - Copies dispatcher script (`git-undo-git-hook.sh`) to hooks directory
@@ -167,7 +167,7 @@ User runs `git undo` → App.Run() → Undoer Factory → Command-specific Undoe
 ## Build System & Versioning
 
 ### Version Management
-- Uses `./scripts/pseudo_version.sh` for development builds
+- Uses `./scripts/src/pseudo_version.sh` for development builds
 - Build-time version injection via `-ldflags "-X main.version=$(VERSION)"`
 - Priority: git tags → build-time version → "unknown"
 
@@ -185,7 +185,7 @@ User runs `git undo` → App.Run() → Undoer Factory → Command-specific Undoe
 ```
 
 ### Hook Detection & Environment Variables
-- **Git Hook Detection**: 
+- **Git Hook Detection**:
   - Primary: `GIT_UNDO_GIT_HOOK_MARKER=1` (set by git hook script)
   - Secondary: `GIT_HOOK_NAME` (contains hook name like "post-commit")
   - Fallback: `GIT_DIR` environment variable presence

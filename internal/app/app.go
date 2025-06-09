@@ -33,6 +33,9 @@ type App struct {
 	// So, we can run tests without setting env vars (but just via setting this flag).
 	// Note: here it's read-only flag, and it's only set in export_test.go
 	isInternalCall bool
+
+	// isBackMode indicates if this is git-back (true) or git-undo (false)
+	isBackMode bool
 }
 
 // IsInternalCall checks if the hook is being called internally (either via test or zsh script).
@@ -52,6 +55,18 @@ func New(version string, verbose, dryRun bool) *App {
 		buildVersion: version,
 		verbose:      verbose,
 		dryRun:       dryRun,
+		isBackMode:   false,
+	}
+}
+
+// NewBack creates a new App instance for git-back.
+func NewBack(version string, verbose, dryRun bool) *App {
+	return &App{
+		dir:          ".",
+		buildVersion: version,
+		verbose:      verbose,
+		dryRun:       dryRun,
+		isBackMode:   true,
 	}
 }
 
@@ -63,18 +78,26 @@ const (
 	resetColor  = "\033[0m"
 )
 
+// getAppName returns the appropriate app name based on mode.
+func (a *App) getAppName() string {
+	if a.isBackMode {
+		return "git-back"
+	}
+	return "git-undo"
+}
+
 // logDebugf writes debug messages to stderr when verbose mode is enabled.
 func (a *App) logDebugf(format string, args ...interface{}) {
 	if !a.verbose {
 		return
 	}
 
-	_, _ = fmt.Fprintf(os.Stderr, yellowColor+"git-undo ⚙️: "+grayColor+format+resetColor+"\n", args...)
+	_, _ = fmt.Fprintf(os.Stderr, yellowColor+a.getAppName()+" ⚙️: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // logWarnf writes error messages to stderr.
 func (a *App) logWarnf(format string, args ...interface{}) {
-	_, _ = fmt.Fprintf(os.Stderr, redColor+"git-undo ❌: "+grayColor+format+resetColor+"\n", args...)
+	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // Run executes the main app logic.
@@ -88,7 +111,7 @@ func (a *App) Run(args []string) (err error) {
 		}
 	}()
 
-	selfCtrl := NewSelfController(a.buildVersion, a.verbose).
+	selfCtrl := NewSelfController(a.buildVersion, a.verbose, a.getAppName()).
 		AddScript(CommandUpdate, gitundoembeds.GetUpdateScript()).
 		AddScript(CommandUninstall, gitundoembeds.GetUninstallScript())
 
@@ -158,19 +181,38 @@ func (a *App) Run(args []string) (err error) {
 	}
 
 	// Get the last git command
-	lastEntry, err := lgr.GetLastRegularEntry()
-	if err != nil {
-		return fmt.Errorf("failed to get last git command: %w", err)
-	}
-	if lastEntry == nil {
-		a.logDebugf("nothing to undo")
-		return nil
+	var lastEntry *logging.Entry
+	if a.isBackMode {
+		// For git-back, only look for checkout/switch commands
+		lastEntry, err = lgr.GetLastCheckoutSwitchEntry()
+		if err != nil {
+			return fmt.Errorf("failed to get last checkout/switch command: %w", err)
+		}
+		if lastEntry == nil {
+			a.logDebugf("no checkout/switch commands to undo")
+			return nil
+		}
+	} else {
+		// For git-undo, get any regular entry
+		lastEntry, err = lgr.GetLastRegularEntry()
+		if err != nil {
+			return fmt.Errorf("failed to get last git command: %w", err)
+		}
+		if lastEntry == nil {
+			a.logDebugf("nothing to undo")
+			return nil
+		}
 	}
 
 	a.logDebugf("Last git command[%s]: %s", lastEntry.Ref, yellowColor+lastEntry.Command+resetColor)
 
 	// Get the appropriate undoer
-	u := undoer.New(lastEntry.Command, g)
+	var u undoer.Undoer
+	if a.isBackMode {
+		u = undoer.NewBack(lastEntry.Command, g)
+	} else {
+		u = undoer.New(lastEntry.Command, g)
+	}
 
 	// Get the undo command
 	undoCmd, err := u.GetUndoCommand()

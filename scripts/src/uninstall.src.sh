@@ -32,11 +32,22 @@ scrub_rc() {
 main() {
     log "Starting uninstallation..."
 
-    # 1) Remove binary
-    echo -en "${GRAY}git-undo:${NC} 1. Removing binary..."
-    if [[ -f "$BIN_PATH" ]]; then
-        rm -f "$BIN_PATH"
-        echo -e " ${GREEN}OK${NC}"
+    # 1) Remove binaries
+    echo -en "${GRAY}git-undo:${NC} 1. Removing binaries..."
+    local removed_count=0
+    
+    if [[ -f "$UNDO_BIN_PATH" ]]; then
+        rm -f "$UNDO_BIN_PATH"
+        ((removed_count++))
+    fi
+    
+    if [[ -f "$BACK_BIN_PATH" ]]; then
+        rm -f "$BACK_BIN_PATH"
+        ((removed_count++))
+    fi
+    
+    if [ $removed_count -gt 0 ]; then
+        echo -e " ${GREEN}OK${NC} ($removed_count binaries removed)"
     else
         echo -e " ${YELLOW}SKIP${NC} (not found)"
     fi

@@ -124,3 +124,18 @@ func New(cmdStr string, gitExec GitExec) Undoer {
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}
 }
+
+// NewBack returns the appropriate Undoer implementation for git-back (checkout/switch undo).
+func NewBack(cmdStr string, gitExec GitExec) Undoer {
+	cmdDetails, err := parseGitCommand(cmdStr)
+	if err != nil {
+		return &InvalidUndoer{rawCommand: cmdStr, parseError: err}
+	}
+
+	switch cmdDetails.SubCommand {
+	case "checkout", "switch":
+		return &BackUndoer{originalCmd: cmdDetails, git: gitExec}
+	default:
+		return &InvalidUndoer{rawCommand: cmdStr}
+	}
+}

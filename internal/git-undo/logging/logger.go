@@ -440,6 +440,72 @@ func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
 	return foundEntry, nil
 }
 
+// GetLastCheckoutSwitchEntry returns the last checkout or switch command entry
+// for the given ref (or current ref if not specified).
+func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...string) (*Entry, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	// Determine which reference to use
+	var ref string
+	switch len(refArg) {
+	case 0:
+		// No ref provided, use current ref
+		currentRef, err := l.git.GetCurrentGitRef()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current ref: %w", err)
+		}
+		ref = currentRef
+	default:
+		ref = refArg[0]
+	}
+
+	var foundEntry *Entry
+	err := l.processLogFile(func(line string) bool {
+		// skip undoed
+		if strings.HasPrefix(line, "#") {
+			return true
+		}
+
+		// Parse the log line into an Entry
+		entry, err := parseLogLine(line)
+		if err != nil { // TODO: warnings maybe?
+			return true
+		}
+
+		// Check reference if specified and not "any"
+		if ref != "" && entry.Ref != ref {
+			return true
+		}
+
+		// Check if this is a checkout or switch command
+		if !isCheckoutOrSwitchCommand(entry.Command) {
+			return true
+		}
+
+		// Found a matching entry!
+		foundEntry = entry
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return foundEntry, nil
+}
+
+// isCheckoutOrSwitchCommand checks if a command is a git checkout or git switch command.
+func isCheckoutOrSwitchCommand(command string) bool {
+	// Parse the command to check its type
+	gitCmd, err := githelpers.ParseGitCommand(command)
+	if err != nil {
+		return false
+	}
+
+	return gitCmd.Name == "checkout" || gitCmd.Name == "switch"
+}
+
 // Dump reads the log file content and writes it directly to the provided writer.
 func (l *Logger) Dump(w io.Writer) error {
 	if l.err != nil {

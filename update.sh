@@ -76,17 +76,22 @@ echo "SCRIPT DIR $SCRIPT_DIR"
 # shellcheck disable=SC1091
 
 # Git-undo specific configuration
-BIN_NAME="git-undo"
+UNDO_BIN_NAME="git-undo"
+BACK_BIN_NAME="git-back"
 BIN_DIR=$(go env GOBIN 2>/dev/null || true)
 [[ -z "$BIN_DIR" ]] && BIN_DIR="$(go env GOPATH)/bin"
-export BIN_PATH="$BIN_DIR/$BIN_NAME"
+export UNDO_BIN_PATH="$BIN_DIR/$UNDO_BIN_NAME"
+export BACK_BIN_PATH="$BIN_DIR/$BACK_BIN_NAME"
+
+# Legacy variable for backward compatibility
+export BIN_PATH="$UNDO_BIN_PATH"
 
 CFG_DIR="$HOME/.config/git-undo"
 export BASH_HOOK="$CFG_DIR/git-undo-hook.bash"
 export ZSH_HOOK="$CFG_DIR/git-undo-hook.zsh"
 GIT_HOOKS_DIR="$CFG_DIR/hooks"
 DISPATCHER_FILE="$GIT_HOOKS_DIR/git-hooks.sh"
-DISPATCHER_SRC="$SCRIPT_DIR/git-undo-git-hook.sh"
+DISPATCHER_SRC="$SCRIPT_DIR/scripts/git-undo-git-hook.sh"
 
 REPO_OWNER="amberpixels"
 REPO_NAME="git-undo"

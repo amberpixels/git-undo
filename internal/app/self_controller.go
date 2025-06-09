@@ -32,16 +32,18 @@ var allowedSelfCommands = []string{
 type SelfController struct {
 	buildVersion string
 	verbose      bool
+	appName      string
 
 	// scripts is a map of self-management commands to their scripts.
 	scripts map[string]string
 }
 
 // NewSelfController creates a new SelfController instance.
-func NewSelfController(buildVersion string, verbose bool) *SelfController {
+func NewSelfController(buildVersion string, verbose bool, appName string) *SelfController {
 	return &SelfController{
 		buildVersion: buildVersion,
 		verbose:      verbose,
+		appName:      appName,
 		scripts:      map[string]string{},
 	}
 }
@@ -65,8 +67,14 @@ func (sc *SelfController) HandleSelfCommand(args []string) error {
 
 	switch selfCommand {
 	case CommandUpdate:
+		if sc.appName == "git-back" {
+			return errors.New("git-back does not support update command. Use git-undo self update instead")
+		}
 		return sc.cmdSelfUpdate()
 	case CommandUninstall:
+		if sc.appName == "git-back" {
+			return errors.New("git-back does not support uninstall command. Use git-undo self uninstall instead")
+		}
 		return sc.cmdSelfUninstall()
 	case CommandVersion:
 		return sc.cmdVersion()
@@ -113,7 +121,20 @@ func (sc *SelfController) cmdVersion() error {
 
 // cmdHelp displays the help information.
 func (sc *SelfController) cmdHelp() error {
-	// TODO use script so help is always up to date
+	if sc.appName == "git-back" {
+		fmt.Fprintf(os.Stdout, "git-back %s\n", sc.buildVersion)
+		fmt.Fprintf(os.Stdout, "Usage: git-back\n")
+		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(os.Stdout, "Git-back undoes the last git checkout or git switch command,\n")
+		fmt.Fprintf(os.Stdout, "returning you to the previous branch or commit.\n")
+		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(os.Stdout, "Commands:\n")
+		fmt.Fprintf(os.Stdout, "  version   Display git-back version\n")
+		fmt.Fprintf(os.Stdout, "  help      Display this help\n")
+		return nil
+	}
+
+	// Default git-undo help
 	fmt.Fprintf(os.Stdout, "git-undo %s\n", sc.buildVersion)
 	fmt.Fprintf(os.Stdout, "Usage: git-undo [command]\n")
 	fmt.Fprintf(os.Stdout, "\n")
@@ -195,5 +216,5 @@ func (sc *SelfController) logDebugf(format string, args ...interface{}) {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, yellowColor+"git-undo ⚙️: "+grayColor+format+resetColor+"\n", args...)
+	fmt.Fprintf(os.Stderr, yellowColor+sc.appName+" ⚙️: "+grayColor+format+resetColor+"\n", args...)
 }
