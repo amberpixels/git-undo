@@ -141,10 +141,28 @@ main() {
          fi
     fi
 
-    # 2) Shell integration
+    # 2) Git hooks integration
+    echo -en "${GRAY}git-undo:${RESET} 2. Git integration..."
+
+    current_hooks_path=$(git config --global --get core.hooksPath || echo "")
+    target_hooks_path="$GIT_HOOKS_DIR"
+
+    if [[ -z "$current_hooks_path" ]]; then
+        git config --global core.hooksPath "$target_hooks_path"
+        install_dispatcher_into "$target_hooks_path"
+        echo -e " ${GREEN}OK${RESET} (set core.hooksPath)"
+    elif [[ "$current_hooks_path" == "$target_hooks_path" ]]; then
+        install_dispatcher_into "$target_hooks_path"
+        echo -e " ${YELLOW}SKIP${RESET} (already configured)"
+    else
+        install_dispatcher_into "$current_hooks_path"
+        echo -e " ${YELLOW}SHARED${RESET} (pig-backed on $current_hooks_path)"
+    fi
+
+    # 3) Shell integration
     local current_shell
     current_shell=$(detect_shell)
-    echo -en "${GRAY}git-undo:${RESET} 2. Shell integration (${BLUE}$current_shell${RESET})..."
+    echo -en "${GRAY}git-undo:${RESET} 3. Shell integration (${BLUE}$current_shell${RESET})..."
 
     # Temporarily disable set -e to capture non-zero exit codes
     set +e

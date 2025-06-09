@@ -71,12 +71,12 @@ func (d *CommandDetails) getFirstNonFlagArg() string {
 
 // parseGitCommand parses a git command string into a CommandDetails struct.
 func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
-	parsed := githelpers.ParseGitCommand(gitCmdStr)
-	if parsed.ValidationErr != nil {
-		return nil, fmt.Errorf("failed to parse input git command: %w", parsed.ValidationErr)
+	parsed, err := githelpers.ParseGitCommand(gitCmdStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse input git command: %w", err)
 	}
-	if !parsed.Valid {
-		return nil, fmt.Errorf("invalid git command format: %s", gitCmdStr)
+	if !parsed.Supported {
+		return nil, fmt.Errorf("unsupported git command format: %s", gitCmdStr)
 	}
 
 	return &CommandDetails{
