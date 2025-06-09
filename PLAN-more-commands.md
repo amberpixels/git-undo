@@ -92,29 +92,98 @@ All Phase 2 commands have been successfully implemented with advanced state mana
 
 ---
 
-## 🔴 Hard to Implement (Complex)
+## 🟡 Phase 3A: Conflict/State Recovery Operations
 
-### 9. `git rebase` - Reapply Commits
-**Current Command**: `git rebase <branch>` or `git rebase -i <commit>`
+### 9. `git rebase` - Failed/Conflicted Rebase Operations
+**Current Command**: `git rebase <branch>` (when conflicts occur)
+**Undo Method**: `git rebase --abort` (return to pre-rebase state)
+**Complexity**: **Medium-High** - State detection and cleanup
+**Use Case**: When rebase is in progress with conflicts, undo should abort the rebase
+**Edge Cases**:
+- REBASE_HEAD state detection
+- Multiple rebase steps in progress
+- Interactive rebase conflicts
+- Preserving working directory changes
+
+### 10. `git pull` - Failed/Conflicted Pull Operations
+**Current Command**: `git pull [remote] [branch]` (when conflicts occur)
+**Undo Method**: Abort merge conflicts from failed pull
+**Complexity**: **Medium-High** - State-dependent abort strategy
+**Use Case**: When pull results in merge conflicts, undo should clean up the conflicted state
+**Edge Cases**:
+- Pull with rebase conflicts (`--rebase`)
+- MERGE_HEAD state detection
+- Preserving local changes vs remote changes
+- Fast-forward failures vs merge conflicts
+
+### 11. `git config` - Configuration Changes
+**Current Command**: `git config --local/--global/--system key value`
+**Undo Method**: Restore previous configuration values
+**Complexity**: **Medium** - Configuration state tracking
+**Edge Cases**:
+- Different config scopes (local/global/system)
+- Configuration deletion vs modification
+- Complex configuration values
+- First-time configuration settings
+
+### 12. `git remote` - Manage Remotes
+**Current Command**: `git remote add/remove/rename`
+**Undo Method**: Reverse remote operations
+**Complexity**: **Medium** - Configuration management
+**Edge Cases**:
+- Multiple remotes
+- Remote URL changes
+- Default remote changes
+- Remote already exists scenarios
+
+## 🔴 Phase 3B: Complex State Operations
+
+### 13. `git worktree` - Manage Working Trees
+**Current Command**: `git worktree add/remove/prune`
+**Undo Method**: Reverse worktree operations
+**Complexity**: **High** - File system operations
+**Edge Cases**:
+- Multiple worktrees
+- Worktree deletion
+- Branch associations
+- File system cleanup
+
+### 14. `git submodule` - Manage Submodules
+**Current Command**: `git submodule add/update/init`
+**Undo Method**: Various depending on subcommand
+**Complexity**: **High** - Multiple subcommands, external repositories
+**Edge Cases**:
+- Submodule addition/removal
+- Submodule updates
+- Nested submodules
+- URL changes
+
+## 🔮 Phase 4: Expert Level Operations
+
+### 15. `git rebase` - Completed History Rewriting
+**Current Command**: `git rebase <branch>` (successfully completed)
 **Undo Method**: `git reset --hard ORIG_HEAD` or reflog-based recovery
-**Complexity**: **High** - Multiple scenarios, interactive rebases
+**Complexity**: **Very High** - Complex history manipulation
+**Use Case**: When rebase completed successfully but user wants to undo the entire operation
 **Edge Cases**:
 - Interactive rebases with squash/fixup/edit
-- Conflicts during rebase
 - Rebase onto different branches
 - Multiple branch rebases
+- Lost commit recovery
+- ORIG_HEAD may not exist for complex rebases
 
-### 10. `git pull` - Fetch and Merge
-**Current Command**: `git pull [remote] [branch]`
+### 16. `git pull` - Successful Remote Operations
+**Current Command**: `git pull [remote] [branch]` (successful)
 **Undo Method**: Complex combination of fetch/merge undo
-**Complexity**: **High** - Combination of fetch + merge operations
+**Complexity**: **Very High** - Remote state coordination
+**Use Case**: When pull succeeded but user wants to undo the fetched changes
 **Edge Cases**:
-- Pull with rebase (`--rebase`)
-- Pull from different remotes
 - Fast-forward vs merge scenarios
-- Conflict resolution
+- Pull from different remotes
+- Fetched objects already integrated
+- Remote tracking branch updates
 
-### 11. `git push` - Upload Changes
+### 17. `git push` - Upload Changes
 **Current Command**: `git push [remote] [branch]`
 **Undo Method**: **Very Complex** - Affects remote repositories
 **Complexity**: **Very High** - Remote state management
@@ -125,46 +194,6 @@ All Phase 2 commands have been successfully implemented with advanced state mana
 - Shared repository considerations
 - Remote rejection scenarios
 
-### 12. `git submodule` - Manage Submodules
-**Current Command**: `git submodule add/update/init`
-**Undo Method**: Various depending on subcommand
-**Complexity**: **High** - Multiple subcommands, external repositories
-**Edge Cases**:
-- Submodule addition/removal
-- Submodule updates
-- Nested submodules
-- URL changes
-
----
-
-## 🟣 Special Cases & Considerations
-
-### 13. `git worktree` - Manage Working Trees
-**Current Command**: `git worktree add/remove/prune`
-**Undo Method**: Reverse worktree operations
-**Complexity**: **Medium-High** - File system operations
-**Edge Cases**:
-- Multiple worktrees
-- Worktree deletion
-- Branch associations
-
-### 14. `git remote` - Manage Remotes
-**Current Command**: `git remote add/remove/rename`
-**Undo Method**: Reverse remote operations
-**Complexity**: **Medium** - Configuration management
-**Edge Cases**:
-- Multiple remotes
-- Remote URL changes
-- Default remote changes
-
-### 15. `git config` - Configuration Changes
-**Current Command**: `git config --local/--global/--system key value`
-**Undo Method**: Restore previous configuration values
-**Complexity**: **Medium** - Configuration state tracking
-**Edge Cases**:
-- Different config scopes
-- Configuration deletion vs modification
-- Complex configuration values
 
 ---
 
@@ -182,16 +211,22 @@ All Phase 2 commands have been successfully implemented with advanced state mana
 3. ✅ `git cherry-pick` - Commit application **[IMPLEMENTED]**
 4. ✅ `git clean` - Untracked file management **[IMPLEMENTED - LIMITED]**
 
-### 🚧 Phase 3: Advanced Operations (High Complexity) **[NEXT]**
-1. `git rebase` - History rewriting
-2. `git pull` - Remote operations
-3. `git submodule` - Submodule management
-4. `git worktree` - Working tree management
+### 🟡 Phase 3A: Conflict/State Recovery (Medium-High Complexity) **[NEXT]**
+1. `git rebase` (failed/conflicted) - Abort ongoing rebase conflicts
+2. `git pull` (failed/conflicted) - Abort failed pull operations
+3. `git config` - Configuration changes
+4. `git remote` - Remote management
+
+### 🔴 Phase 3B: Complex State Operations (High Complexity) **[ADVANCED]**
+1. `git worktree` - Working tree management
+2. `git submodule` - Submodule management
 
 ### 🔮 Phase 4: Expert Level (Very High Complexity) **[FUTURE]**
-1. `git push` - Remote state modification
-2. Complex interactive operations
-3. Multi-repository scenarios
+1. `git rebase` (completed) - Undo successful history rewriting
+2. `git pull` (successful) - Undo successful remote fetch+merge
+3. `git push` - Remote state modification
+4. Complex interactive operations
+5. Multi-repository scenarios
 
 ## Architecture Considerations
 
@@ -252,15 +287,16 @@ All Phase 2 commands have been successfully implemented with advanced state mana
 ## 📊 Implementation Progress Summary
 
 ### Command Coverage Statistics
-- **Total Planned Commands**: 15 additional commands (beyond original 7)
+- **Total Planned Commands**: 17 additional commands (beyond original 7)
 - **Phase 1 Complete**: 4/4 commands ✅ (100%)
 - **Phase 2 Complete**: 4/4 commands ✅ (100%) 
-- **Phase 3 Remaining**: 4/4 commands 🚧 (0%)
-- **Phase 4 Remaining**: 3/3 commands 🔮 (0%)
+- **Phase 3A Remaining**: 4/4 commands 🟡 (0%) - Conflict/State Recovery
+- **Phase 3B Remaining**: 2/2 commands 🔴 (0%) - Complex State Operations
+- **Phase 4 Remaining**: 3/3 commands 🔮 (0%) - Expert Level
 
 ### Overall Progress
-- **Implemented**: 9/15 additional commands **(60% complete)**
-- **Total git-undo Support**: 16/23 commands **(70% of planned coverage)**
+- **Implemented**: 9/17 additional commands **(53% complete)**
+- **Total git-undo Support**: 16/25 commands **(64% of planned coverage)**
 - **Ready for Production**: All Phase 1 & 2 commands plus git switch with comprehensive testing
 
 ### Key Achievements
@@ -273,8 +309,9 @@ All Phase 2 commands have been successfully implemented with advanced state mana
 - ✅ **Architecture Foundation**: Patterns established for complex Phase 3 operations
 
 ### Next Milestones
-- 🚧 **Phase 3**: History rewriting and remote operations (git rebase, pull, submodule, worktree)
-- 🔮 **Phase 4**: Expert-level operations (git push, complex interactive scenarios)
+- 🟡 **Phase 3A**: Conflict/State Recovery (rebase --abort, pull conflicts, config, remote)
+- 🔴 **Phase 3B**: Complex State Operations (worktree, submodule)
+- 🔮 **Phase 4**: Expert-level operations (completed rebase/pull undo, git push)
 
 ---
 
