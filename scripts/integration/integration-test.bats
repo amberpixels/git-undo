@@ -639,4 +639,283 @@ teardown() {
     assert_line "staged.txt"
     
     echo "# Phase 1 Commands integration test completed successfully!"
+}
+
+@test "Phase 2 Commands: git reset, revert, cherry-pick undo functionality" {
+    echo "# ============================================================================"
+    echo "# PHASE 2 COMMANDS TEST: Testing git reset, revert, cherry-pick undo functionality"
+    echo "# ============================================================================"
+    
+    # Setup: Create initial commit structure for testing
+    echo "initial content" > initial.txt
+    git add initial.txt
+    git commit -m "Initial commit"
+    
+    echo "second content" > second.txt
+    git add second.txt
+    git commit -m "Second commit"
+    
+    echo "third content" > third.txt
+    git add third.txt
+    git commit -m "Third commit"
+    
+    # ============================================================================
+    # PHASE 2A: Test git reset undo
+    # ============================================================================
+    echo "# Phase 2A: Testing git reset undo..."
+    
+    # Get current commit hash for verification
+    run git rev-parse HEAD
+    assert_success
+    third_commit="$output"
+    
+    # Perform a soft reset to previous commit
+    git reset --soft HEAD~1
+    
+    # Verify we're at the second commit with staged changes
+    run git rev-parse HEAD
+    assert_success
+    second_commit="$output"
+    
+    # Verify third.txt is staged
+    run git diff --cached --name-only
+    assert_success
+    assert_line "third.txt"
+    
+    # Undo the reset (should restore HEAD to third_commit)
+    run git-undo
+    assert_success
+    
+    # Verify we're back at the third commit
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$third_commit"
+    
+    # Test mixed reset undo
+    git reset HEAD~1
+    
+    # Verify second commit with unstaged changes
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$second_commit"
+    
+    run git status --porcelain
+    assert_success
+    assert_output --partial " D third.txt"
+    
+    # Undo the mixed reset
+    run git-undo
+    assert_success
+    
+    # Verify restoration
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$third_commit"
+    
+    # ============================================================================
+    # PHASE 2B: Test git revert undo
+    # ============================================================================
+    echo "# Phase 2B: Testing git revert undo..."
+    
+    # Create a commit to revert
+    echo "revert-me content" > revert-me.txt
+    git add revert-me.txt
+    git commit -m "Commit to be reverted"
+    
+    # Get the commit hash
+    run git rev-parse HEAD
+    assert_success
+    revert_target="$output"
+    
+    # Revert the commit
+    git revert --no-edit HEAD
+    
+    # Verify revert commit was created
+    run git log -1 --format="%s"
+    assert_success
+    assert_output --partial "Revert"
+    
+    # Verify file was removed by revert
+    [ ! -f revert-me.txt ]
+    
+    # Undo the revert
+    run git-undo
+    assert_success
+    
+    # Verify we're back to the original commit
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$revert_target"
+    
+    # Verify file is back
+    [ -f revert-me.txt ]
+    
+    # ============================================================================
+    # PHASE 2C: Test git cherry-pick undo
+    # ============================================================================
+    echo "# Phase 2C: Testing git cherry-pick undo..."
+    
+    # Create a feature branch with a commit to cherry-pick
+    git checkout -b feature-cherry
+    echo "cherry content" > cherry.txt
+    git add cherry.txt
+    git commit -m "Cherry-pick target commit"
+    
+    # Get the commit hash
+    run git rev-parse HEAD
+    assert_success
+    cherry_commit="$output"
+    
+    # Go back to main branch
+    git checkout main
+    
+    # Record main branch state
+    run git rev-parse HEAD
+    assert_success
+    main_before_cherry="$output"
+    
+    # Cherry-pick the commit
+    git cherry-pick "$cherry_commit"
+    
+    # Verify cherry-pick was successful
+    [ -f cherry.txt ]
+    run git log -1 --format="%s"
+    assert_success
+    assert_output "Cherry-pick target commit"
+    
+    # Undo the cherry-pick
+    run git-undo
+    assert_success
+    
+    # Verify we're back to the original main state
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$main_before_cherry"
+    
+    # Verify cherry-picked file is gone
+    [ ! -f cherry.txt ]
+    
+    # ============================================================================
+    # PHASE 2D: Test git clean undo (expected to fail)
+    # ============================================================================
+    echo "# Phase 2D: Testing git clean undo (should show unsupported error)..."
+    
+    # Create untracked files
+    echo "untracked1" > untracked1.txt
+    echo "untracked2" > untracked2.txt
+    
+    # Verify files exist
+    [ -f untracked1.txt ]
+    [ -f untracked2.txt ]
+    
+    # Clean the files
+    git clean -f
+    
+    # Verify files are gone
+    [ ! -f untracked1.txt ]
+    [ ! -f untracked2.txt ]
+    
+    # Try to undo clean (should fail with clear error message)
+    run git-undo
+    assert_failure
+    assert_output --partial "permanently removes untracked files that cannot be recovered"
+    
+    echo "# Phase 2 Commands integration test completed successfully!"
+}
+
+@test "git switch undo functionality" {
+    echo "# ============================================================================"
+    echo "# GIT SWITCH TEST: Testing git switch undo functionality"
+    echo "# ============================================================================"
+    
+    # Setup: Create initial commit structure for testing
+    echo "initial content" > initial.txt
+    git add initial.txt
+    git commit -m "Initial commit"
+    
+    echo "main content" > main.txt
+    git add main.txt
+    git commit -m "Main content commit"
+    
+    # ============================================================================
+    # Test git switch -c (branch creation) undo
+    # ============================================================================
+    echo "# Testing git switch -c branch creation undo..."
+    
+    # Create a new branch using git switch -c
+    git switch -c feature-switch
+    
+    # Verify we're on the new branch
+    run git branch --show-current
+    assert_success
+    assert_output "feature-switch"
+    
+    # Undo the branch creation
+    run git-undo
+    assert_success
+    
+    # Verify the branch was deleted and we're back on main
+    run git branch --show-current
+    assert_success
+    assert_output "main"
+    
+    # Verify the feature-switch branch no longer exists
+    run git branch --list feature-switch
+    assert_success
+    assert_output ""
+    
+    # ============================================================================
+    # Test regular git switch undo (branch switching)
+    # ============================================================================
+    echo "# Testing regular git switch undo..."
+    
+    # Create a feature branch and switch to it
+    git switch -c test-feature
+    echo "feature content" > feature.txt
+    git add feature.txt
+    git commit -m "Feature content"
+    
+    # Switch back to main
+    git switch main
+    
+    # Verify we're on main
+    run git branch --show-current
+    assert_success
+    assert_output "main"
+    
+    # Undo the switch (should go back to test-feature)
+    run git-undo
+    assert_success
+    
+    # Verify we're back on test-feature
+    run git branch --show-current
+    assert_success
+    assert_output "test-feature"
+    
+    # ============================================================================
+    # Test git switch with uncommitted changes (should show warnings)
+    # ============================================================================
+    echo "# Testing git switch undo with uncommitted changes..."
+    
+    # Create some uncommitted changes
+    echo "modified content" >> feature.txt
+    echo "new unstaged file" > unstaged.txt
+    
+    # Switch to main (git switch should handle this)
+    git switch main
+    
+    # Try to undo the switch (should work but with warnings in verbose mode)
+    run git-undo -v
+    assert_success
+    
+    # Verify we're back on test-feature
+    run git branch --show-current
+    assert_success
+    assert_output "test-feature"
+    
+    # Clean up uncommitted changes for next tests
+    git checkout -- feature.txt
+    rm -f unstaged.txt
+    
+    echo "# git switch integration test completed successfully!"
 } 

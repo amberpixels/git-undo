@@ -116,6 +116,8 @@ func New(cmdStr string, gitExec GitExec) Undoer {
 		return &BranchUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "checkout":
 		return &CheckoutUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "switch":
+		return &SwitchUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "stash":
 		return &StashUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "merge":
@@ -128,6 +130,14 @@ func New(cmdStr string, gitExec GitExec) Undoer {
 		return &TagUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "restore":
 		return &RestoreUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "reset":
+		return &ResetUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "revert":
+		return &RevertUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "cherry-pick":
+		return &CherryPickUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "clean":
+		return &CleanUndoer{originalCmd: cmdDetails, git: gitExec}
 	default:
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}

@@ -48,7 +48,7 @@ var porcelainCommands = []string{
 	"commit", "describe", "diff", "fetch", "format-patch", "gc",
 	"grep", "gui", "help", "init", "log", "merge", "mv", "notes",
 	"pull", "push", "rebase", "reflog", "remote", "reset", "revert",
-	"rm", "shortlog", "show", "stash", "status", "submodule", "tag",
+	"rm", "shortlog", "show", "stash", "status", "submodule", "switch", "tag",
 	"worktree", "config", "restore",
 	"undo",
 }
