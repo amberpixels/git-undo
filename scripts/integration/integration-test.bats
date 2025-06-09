@@ -454,4 +454,189 @@ teardown() {
     git stash pop
     
     echo "# git-back integration test completed successfully!"
+}
+
+@test "Phase 1 Commands: git rm, mv, tag, restore undo functionality" {
+    echo "# ============================================================================"
+    echo "# PHASE 1 COMMANDS TEST: Testing git rm, mv, tag, restore undo functionality"
+    echo "# ============================================================================"
+    
+    # Setup: Create some initial commits so we're not trying to undo the initial commit
+    echo "initial content" > initial.txt
+    git add initial.txt
+    git commit -m "Initial commit"
+    
+    echo "second content" > second.txt  
+    git add second.txt
+    git commit -m "Second commit"
+    
+    # ============================================================================
+    # PHASE 1A: Test git tag undo
+    # ============================================================================
+    echo "# Phase 1A: Testing git tag undo..."
+    
+    # Create a tag
+    git tag v1.0.0
+    
+    # Verify tag exists
+    run git tag -l v1.0.0
+    assert_success
+    assert_output "v1.0.0"
+    
+    # Undo the tag creation
+    run git-undo
+    assert_success
+    
+    # Verify tag is deleted
+    run git tag -l v1.0.0
+    assert_success
+    assert_output ""
+    
+    # Test annotated tag
+    git tag -a v2.0.0 -m "Release version 2.0.0"
+    
+    # Verify tag exists
+    run git tag -l v2.0.0
+    assert_success
+    assert_output "v2.0.0"
+    
+    # Undo the annotated tag creation
+    run git-undo
+    assert_success
+    
+    # Verify tag is deleted
+    run git tag -l v2.0.0
+    assert_success
+    assert_output ""
+    
+    # ============================================================================
+    # PHASE 1B: Test git mv undo
+    # ============================================================================
+    echo "# Phase 1B: Testing git mv undo..."
+    
+    # Create a file to move
+    echo "content for moving" > moveme.txt
+    git add moveme.txt
+    git commit -m "Add file to move"
+    
+    # Move the file
+    git mv moveme.txt moved.txt
+    
+    # Verify file was moved
+    [ ! -f moveme.txt ]
+    [ -f moved.txt ]
+    
+    # Undo the move
+    run git-undo
+    assert_success
+    
+    # Verify file is back to original name
+    [ -f moveme.txt ]
+    [ ! -f moved.txt ]
+    
+    # Test moving multiple files to directory
+    mkdir subdir
+    echo "file1 content" > file1.txt
+    echo "file2 content" > file2.txt
+    git add file1.txt file2.txt
+    git commit -m "Add files for directory move"
+    
+    # Move files to subdirectory
+    git mv file1.txt file2.txt subdir/
+    
+    # Verify files were moved
+    [ ! -f file1.txt ]
+    [ ! -f file2.txt ]
+    [ -f subdir/file1.txt ]
+    [ -f subdir/file2.txt ]
+    
+    # Undo the move
+    run git-undo
+    assert_success
+    
+    # Verify files are back
+    [ -f file1.txt ]
+    [ -f file2.txt ]
+    [ ! -f subdir/file1.txt ]
+    [ ! -f subdir/file2.txt ]
+    
+    # ============================================================================
+    # PHASE 1C: Test git rm undo
+    # ============================================================================
+    echo "# Phase 1C: Testing git rm undo..."
+    
+    # Create a file to remove
+    echo "content for removal" > removeme.txt
+    git add removeme.txt
+    git commit -m "Add file to remove"
+    
+    # Test cached removal (--cached flag)
+    git rm --cached removeme.txt
+    
+    # Verify file is unstaged but still exists
+    run git ls-files removeme.txt
+    assert_success
+    assert_output ""
+    [ -f removeme.txt ]
+    
+    # Undo the cached removal
+    run git-undo
+    assert_success
+    
+    # Verify file is back in index
+    run git ls-files removeme.txt
+    assert_success
+    assert_output "removeme.txt"
+    
+    # Test full removal
+    git rm removeme.txt
+    
+    # Verify file is removed from both index and working directory
+    run git ls-files removeme.txt
+    assert_success
+    assert_output ""
+    [ ! -f removeme.txt ]
+    
+    # Undo the removal
+    run git-undo
+    assert_success
+    
+    # Verify file is restored
+    run git ls-files removeme.txt
+    assert_success
+    assert_output "removeme.txt"
+    [ -f removeme.txt ]
+    
+    # ============================================================================
+    # PHASE 1D: Test git restore undo (staged only)
+    # ============================================================================
+    echo "# Phase 1D: Testing git restore --staged undo..."
+    
+    # Create and stage a file
+    echo "staged content" > staged.txt
+    git add staged.txt
+    
+    # Verify file is staged
+    run git diff --cached --name-only
+    assert_success
+    assert_line "staged.txt"
+    
+    # Restore (unstage) the file
+    git restore --staged staged.txt
+    
+    # Verify file is no longer staged
+    run git diff --cached --name-only
+    assert_success
+    assert_output ""
+    
+    # Undo the restore (re-stage the file)
+    run git-undo
+    assert_success
+    
+    # Verify file is staged again
+    run git diff --cached --name-only
+    assert_success
+    assert_line "staged.txt"
+    
+    echo "# Phase 1 Commands integration test completed successfully!"
 } 

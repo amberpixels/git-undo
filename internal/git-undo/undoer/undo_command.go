@@ -120,6 +120,14 @@ func New(cmdStr string, gitExec GitExec) Undoer {
 		return &StashUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "merge":
 		return &MergeUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "rm":
+		return &RmUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "mv":
+		return &MvUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "tag":
+		return &TagUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "restore":
+		return &RestoreUndoer{originalCmd: cmdDetails, git: gitExec}
 	default:
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}
