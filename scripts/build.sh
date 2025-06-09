@@ -3,8 +3,8 @@
 set -e
 
 SCRIPT_DIR="$(dirname "$0")"
-COLORS_FILE="$SCRIPT_DIR/colors.sh"
-COMMON_FILE="$SCRIPT_DIR/common.sh"
+COLORS_FILE="$SCRIPT_DIR/src/colors.sh"
+COMMON_FILE="$SCRIPT_DIR/src/common.sh"
 BASH_HOOK_FILE="$SCRIPT_DIR/git-undo-hook.bash"
 BASH_TEST_HOOK_FILE="$SCRIPT_DIR/git-undo-hook.test.bash"
 ZSH_HOOK_FILE="$SCRIPT_DIR/git-undo-hook.zsh"
@@ -28,7 +28,8 @@ encode_hook_file() {
 build_script() {
     local src_file="$1"
     local out_file="$2"
-    local script_name="$(basename "$out_file")"
+    local script_name
+    script_name="$(basename "$out_file")"
     
     # echo "Building $script_name..."
     
@@ -41,13 +42,15 @@ EOF
     
     # If building install.sh, add embedded hook files
     if [[ "$script_name" == "install.sh" ]]; then
-        echo "" >> "$out_file"
-        echo "# ── Embedded hook files ── that's a base64 of scripts/git-undo-hook.bash ────" >> "$out_file"
-        encode_hook_file "$BASH_HOOK_FILE" "EMBEDDED_BASH_HOOK" >> "$out_file"
-        encode_hook_file "$BASH_TEST_HOOK_FILE" "EMBEDDED_BASH_TEST_HOOK" >> "$out_file"
-        encode_hook_file "$ZSH_HOOK_FILE" "EMBEDDED_ZSH_HOOK" >> "$out_file"
-        echo "# ── End of embedded hook files ──────────────────────────────────────────────" >> "$out_file"
-        echo "" >> "$out_file"
+        {
+            echo ""
+            echo "# ── Embedded hook files ── that's a base64 of scripts/git-undo-hook.bash ────"
+            encode_hook_file "$BASH_HOOK_FILE" "EMBEDDED_BASH_HOOK"
+            encode_hook_file "$BASH_TEST_HOOK_FILE" "EMBEDDED_BASH_TEST_HOOK"
+            encode_hook_file "$ZSH_HOOK_FILE" "EMBEDDED_ZSH_HOOK"
+            echo "# ── End of embedded hook files ──────────────────────────────────────────────"
+            echo ""
+        } >> "$out_file"
     fi
     
     # Process the source file line by line
@@ -59,13 +62,15 @@ EOF
         
         # Replace the common.sh source line with actual content
         if [[ "$line" =~ source.*common\.sh ]]; then
-            echo "# ── Inlined content from common.sh ──────────────────────────────────────────" >> "$out_file"
-            
-            # First inline colors.sh content (without shebang and without sourcing line)
-            tail -n +2 "$COLORS_FILE" | grep -v '^#!/' >> "$out_file"
-            tail -n +2 "$COMMON_FILE" | grep -v '^#!/' | grep -v 'source.*colors\.sh' | grep -v '^SCRIPT_DIR=' | grep -v '^#.*Source shared colors' >> "$out_file"
-            
-            echo "# ── End of inlined content ──────────────────────────────────────────────────" >> "$out_file"
+            {
+                echo "# ── Inlined content from common.sh ──────────────────────────────────────────"
+                echo ""
+                # First inline colors.sh content (without shebang and without sourcing line)
+                tail -n +2 "$COLORS_FILE" | grep -v '^#!/'
+                tail -n +2 "$COMMON_FILE" | grep -v '^#!/' | grep -v 'source.*colors\.sh' | grep -v '^SCRIPT_DIR=' | grep -v '^#.*Source shared colors'
+                echo ""
+                echo "# ── End of inlined content ──────────────────────────────────────────────────"
+            } >> "$out_file"
         else
             echo "$line" >> "$out_file"
         fi

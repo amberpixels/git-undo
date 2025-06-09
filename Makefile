@@ -74,6 +74,12 @@ lint-install:
 lint: lint-install
 	$(shell which golangci-lint) run
 
+# Check shell scripts using shellcheck
+.PHONY: sc
+sc:
+	@echo "Running shellcheck on all shell scripts..."
+	@find scripts/ -name "*.sh" -o -name "*.bash" -o -name "*.zsh" | xargs shellcheck || true
+
 # Install the binary globally with custom version info
 .PHONY: binary-install
 binary-install:

@@ -3,7 +3,9 @@
 # DO NOT EDIT - modify scripts/src/*.src.sh instead and run 'make buildscripts'
 set -e
 
+# shellcheck disable=SC1091
 # ── Inlined content from common.sh ──────────────────────────────────────────
+
 
 # Color definitions - shared across all scripts
 GRAY='\033[90m'
@@ -11,30 +13,27 @@ GREEN='\033[32m'
 YELLOW='\033[33m'
 RED='\033[31m'
 BLUE='\033[34m'
-RESET='\033[0m'
-
-# Alternative name for compatibility
-NC="$RESET"  # No Color (used in some scripts)
+NC='\033[0m'  # No Color
 
 # Basic logging functions
 log() { 
-    echo -e "${GRAY}git-undo:${RESET} $1"
+    echo -e "${GRAY}git-undo:${NC} $1"
 }
 
 log_info() {
-    echo -e "${BLUE}[INFO]${RESET} $*"
+    echo -e "${BLUE}[INFO]${NC} $*"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${RESET} $*"
+    echo -e "${GREEN}[SUCCESS]${NC} $*"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${RESET} $*"
+    echo -e "${RED}[ERROR]${NC} $*"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${RESET} $*"
+    echo -e "${YELLOW}[WARNING]${NC} $*"
 } 
 
 # _get_script_dir determines the directory of this file (common.sh) in a POSIX-portable way
@@ -56,10 +55,13 @@ _get_script_dir() {
     # physical directory of the file itself
     local dir
     dir=$(cd -P -- "$(dirname -- "$src")" && pwd)
-    # Because of how we store scripts: built executable scripts are in root
-    # but helpers and sources are in `scripts` dir.
-    # so always append scripts
-    printf '%s/scripts' "$dir"
+    # Since common.sh is now in scripts/src/, we need to go up one level to get scripts/
+    # Remove /src suffix if present, otherwise assume we're already in scripts/
+    if [[ "$dir" == */src ]]; then
+        printf '%s' "${dir%/src}"
+    else
+        printf '%s' "$dir"
+    fi
 }
 
 if [[ -n "${BASH_SOURCE[0]:-}" ]]; then               # Bash (she-bang path)
@@ -71,25 +73,26 @@ unset -f _get_script_dir
 
 echo "SCRIPT DIR $SCRIPT_DIR"
 # Coloring helpers
+# shellcheck disable=SC1091
 
 # Git-undo specific configuration
 BIN_NAME="git-undo"
 BIN_DIR=$(go env GOBIN 2>/dev/null || true)
 [[ -z "$BIN_DIR" ]] && BIN_DIR="$(go env GOPATH)/bin"
-BIN_PATH="$BIN_DIR/$BIN_NAME"
+export BIN_PATH="$BIN_DIR/$BIN_NAME"
 
 CFG_DIR="$HOME/.config/git-undo"
-BASH_HOOK="$CFG_DIR/git-undo-hook.bash"
-ZSH_HOOK="$CFG_DIR/git-undo-hook.zsh"
+export BASH_HOOK="$CFG_DIR/git-undo-hook.bash"
+export ZSH_HOOK="$CFG_DIR/git-undo-hook.zsh"
 GIT_HOOKS_DIR="$CFG_DIR/hooks"
 DISPATCHER_FILE="$GIT_HOOKS_DIR/git-hooks.sh"
 DISPATCHER_SRC="$SCRIPT_DIR/git-undo-git-hook.sh"
 
 REPO_OWNER="amberpixels"
 REPO_NAME="git-undo"
-GITHUB_REPO_URL="github.com/$REPO_OWNER/$REPO_NAME"
+export GITHUB_REPO_URL="github.com/$REPO_OWNER/$REPO_NAME"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
-INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
+export INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
 
 detect_shell() {
     # Method 1: Check $SHELL environment variable (most reliable for login shell)
@@ -147,12 +150,16 @@ version_compare() {
     version2=${version2#v}
 
     # Extract base version (everything before the first dash)
-    local base1=$(echo "$version1" | cut -d'-' -f1)
-    local base2=$(echo "$version2" | cut -d'-' -f1)
+    local base1
+    local base2
+    base1=$(echo "$version1" | cut -d'-' -f1)
+    base2=$(echo "$version2" | cut -d'-' -f1)
 
     # Convert base versions to comparable format (e.g., 1.2.3 -> 001002003)
-    local v1=$(echo "$base1" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
-    local v2=$(echo "$base2" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    local v1
+    local v2
+    v1=$(echo "$base1" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    v2=$(echo "$base2" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
 
     # Compare base versions first
     if [[ "$v1" < "$v2" ]]; then
@@ -305,62 +312,63 @@ EOF
     log "Hook installation completed for: $target"
     return 0
 }
+
 # ── End of inlined content ──────────────────────────────────────────────────
 
 main() {
     log "Checking for updates..."
 
     # 1) Get current version from the binary itself
-    echo -en "${GRAY}git-undo:${RESET} 1. Current version..."
+    echo -en "${GRAY}git-undo:${NC} 1. Current version..."
     local current_version
     if ! current_version=$(git-undo version 2>/dev/null | awk '{print $2}'); then
-        echo -e " ${RED}FAILED${RESET}"
+        echo -e " ${RED}FAILED${NC}"
         log "Could not determine current version. Is git-undo installed?"
         exit 1
     fi
     
     if [[ -z "$current_version" || "$current_version" == "unknown" ]]; then
-        echo -e " ${YELLOW}UNKNOWN${RESET}"
+        echo -e " ${YELLOW}UNKNOWN${NC}"
         log "No version information found. Reinstall git-undo."
         exit 1
     else
-        echo -e " ${BLUE}$current_version${RESET}"
+        echo -e " ${BLUE}$current_version${NC}"
     fi
 
     # 2) Get latest release version
-    echo -en "${GRAY}git-undo:${RESET} 2. Checking latest release..."
+    echo -en "${GRAY}git-undo:${NC} 2. Checking latest release..."
     local latest_version
     if ! latest_version=$(get_latest_version); then
-        echo -e " ${RED}FAILED${RESET}"
+        echo -e " ${RED}FAILED${NC}"
         log "Failed to check latest version. Check your internet connection."
         exit 1
     fi
-    echo -e " ${BLUE}$latest_version${RESET}"
+    echo -e " ${BLUE}$latest_version${NC}"
 
     # 3) Compare versions
-    echo -en "${GRAY}git-undo:${RESET} 3. Comparing releases..."
+    echo -en "${GRAY}git-undo:${NC} 3. Comparing releases..."
     local comparison
     comparison=$(version_compare "$current_version" "$latest_version")
     
     case "$comparison" in
         "same")
-            echo -e " ${GREEN}UP TO DATE${RESET}"
-            log "You're already running the latest release (${BLUE}$current_version${RESET})"
+            echo -e " ${GREEN}UP TO DATE${NC}"
+            log "You're already running the latest release (${BLUE}$current_version${NC})"
             exit 0
             ;;
         "newer")
-            echo -e " ${YELLOW}NEWER${RESET}"
-            log "You're running a newer release than available (${BLUE}$current_version${RESET} > ${BLUE}$latest_version${RESET})"
+            echo -e " ${YELLOW}NEWER${NC}"
+            log "You're running a newer release than available (${BLUE}$current_version${NC} > ${BLUE}$latest_version${NC})"
             exit 0
             ;;
         "older")
-            echo -e " ${YELLOW}UPDATE AVAILABLE${RESET}"
+            echo -e " ${YELLOW}UPDATE AVAILABLE${NC}"
             ;;
     esac
 
     # 4) Ask for confirmation
     echo -e ""
-    echo -e "Update available: ${BLUE}$current_version${RESET} → ${GREEN}$latest_version${RESET}"
+    echo -e "Update available: ${BLUE}$current_version${NC} → ${GREEN}$latest_version${NC}"
     echo -en "Do you want to update? [Y/n]: "
     read -r response
     
@@ -374,28 +382,28 @@ main() {
     esac
 
     # 5) Download and run new installer
-    echo -en "${GRAY}git-undo:${RESET} 4. Downloading latest installer..."
+    echo -en "${GRAY}git-undo:${NC} 4. Downloading latest installer..."
     local temp_installer
     temp_installer=$(mktemp)
     
     if command -v curl >/dev/null 2>&1; then
         if curl -sL "$INSTALL_URL" -o "$temp_installer"; then
-            echo -e " ${GREEN}OK${RESET}"
+            echo -e " ${GREEN}OK${NC}"
         else
-            echo -e " ${RED}FAILED${RESET}"
+            echo -e " ${RED}FAILED${NC}"
             rm -f "$temp_installer"
             exit 1
         fi
     elif command -v wget >/dev/null 2>&1; then
         if wget -qO "$temp_installer" "$INSTALL_URL"; then
-            echo -e " ${GREEN}OK${RESET}"
+            echo -e " ${GREEN}OK${NC}"
         else
-            echo -e " ${RED}FAILED${RESET}"
+            echo -e " ${RED}FAILED${NC}"
             rm -f "$temp_installer"
             exit 1
         fi
     else
-        echo -e " ${RED}FAILED${RESET}"
+        echo -e " ${RED}FAILED${NC}"
         log "curl or wget required for update"
         exit 1
     fi
@@ -409,10 +417,10 @@ main() {
     rm -f "$temp_installer"
 
     if [[ $install_status -eq 0 ]]; then
-        log "${GREEN}Update completed successfully!${RESET}"
-        log "Updated to version ${GREEN}$latest_version${RESET}"
+        log "${GREEN}Update completed successfully!${NC}"
+        log "Updated to version ${GREEN}$latest_version${NC}"
     else
-        log "${RED}Update failed.${RESET}"
+        log "${RED}Update failed.${NC}"
         exit 1
     fi
 }

@@ -9,7 +9,9 @@ curl -fsSL https://raw.githubusercontent.com/amberpixels/git-undo/main/install.s
 
 echo "Installation completed, setting up PATH and sourcing shell configuration..."
 # Ensure Go binary path is in PATH BEFORE sourcing .bashrc (needed for hooks)
-export PATH="$(go env GOPATH)/bin:$PATH"
+GOPATH_BIN="$(go env GOPATH)/bin"
+export PATH="$GOPATH_BIN:$PATH"
+# shellcheck disable=SC1090
 source ~/.bashrc
 
 echo "Running integration tests..."

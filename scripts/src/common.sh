@@ -19,10 +19,13 @@ _get_script_dir() {
     # physical directory of the file itself
     local dir
     dir=$(cd -P -- "$(dirname -- "$src")" && pwd)
-    # Because of how we store scripts: built executable scripts are in root
-    # but helpers and sources are in `scripts` dir.
-    # so always append scripts
-    printf '%s/scripts' "$dir"
+    # Since common.sh is now in scripts/src/, we need to go up one level to get scripts/
+    # Remove /src suffix if present, otherwise assume we're already in scripts/
+    if [[ "$dir" == */src ]]; then
+        printf '%s' "${dir%/src}"
+    else
+        printf '%s' "$dir"
+    fi
 }
 
 if [[ -n "${BASH_SOURCE[0]:-}" ]]; then               # Bash (she-bang path)
@@ -34,26 +37,27 @@ unset -f _get_script_dir
 
 echo "SCRIPT DIR $SCRIPT_DIR"
 # Coloring helpers
-source "$SCRIPT_DIR/colors.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/src/colors.sh"
 
 # Git-undo specific configuration
 BIN_NAME="git-undo"
 BIN_DIR=$(go env GOBIN 2>/dev/null || true)
 [[ -z "$BIN_DIR" ]] && BIN_DIR="$(go env GOPATH)/bin"
-BIN_PATH="$BIN_DIR/$BIN_NAME"
+export BIN_PATH="$BIN_DIR/$BIN_NAME"
 
 CFG_DIR="$HOME/.config/git-undo"
-BASH_HOOK="$CFG_DIR/git-undo-hook.bash"
-ZSH_HOOK="$CFG_DIR/git-undo-hook.zsh"
+export BASH_HOOK="$CFG_DIR/git-undo-hook.bash"
+export ZSH_HOOK="$CFG_DIR/git-undo-hook.zsh"
 GIT_HOOKS_DIR="$CFG_DIR/hooks"
 DISPATCHER_FILE="$GIT_HOOKS_DIR/git-hooks.sh"
 DISPATCHER_SRC="$SCRIPT_DIR/git-undo-git-hook.sh"
 
 REPO_OWNER="amberpixels"
 REPO_NAME="git-undo"
-GITHUB_REPO_URL="github.com/$REPO_OWNER/$REPO_NAME"
+export GITHUB_REPO_URL="github.com/$REPO_OWNER/$REPO_NAME"
 GITHUB_API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
-INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
+export INSTALL_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/install.sh"
 
 detect_shell() {
     # Method 1: Check $SHELL environment variable (most reliable for login shell)
@@ -111,12 +115,16 @@ version_compare() {
     version2=${version2#v}
 
     # Extract base version (everything before the first dash)
-    local base1=$(echo "$version1" | cut -d'-' -f1)
-    local base2=$(echo "$version2" | cut -d'-' -f1)
+    local base1
+    local base2
+    base1=$(echo "$version1" | cut -d'-' -f1)
+    base2=$(echo "$version2" | cut -d'-' -f1)
 
     # Convert base versions to comparable format (e.g., 1.2.3 -> 001002003)
-    local v1=$(echo "$base1" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
-    local v2=$(echo "$base2" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    local v1
+    local v2
+    v1=$(echo "$base1" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
+    v2=$(echo "$base2" | awk -F. '{ printf("%03d%03d%03d\n", $1, $2, $3); }')
 
     # Compare base versions first
     if [[ "$v1" < "$v2" ]]; then
