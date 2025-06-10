@@ -30,7 +30,7 @@ func main() {
 	application := app.New(version, verbose, dryRun)
 
 	if err := application.Run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, redColor+appName+" ❌: "+grayColor+err.Error()+resetColor)
+		_, _ = fmt.Fprintln(os.Stderr, redColor+appNameGitUndo+" ❌: "+grayColor+err.Error()+resetColor)
 		os.Exit(1)
 	}
 }
@@ -39,6 +39,6 @@ const (
 	grayColor  = "\033[90m"
 	redColor   = "\033[31m"
 	resetColor = "\033[0m"
-	
-	appName = "git-undo"
+
+	appNameGitUndo = "git-undo"
 )
