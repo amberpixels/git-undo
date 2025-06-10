@@ -31,6 +31,7 @@ then generates the matching *anti‑command* when you call **`git undo`**.
 ## Features
 - **One‑shot undo** for commits, adds, branches, stashes, merges, and more.
 - **Sequential undo / redo** - walk backward *or* forward through history.
+- **Smart guidance** - detects checkout/switch operations and suggests `git back` instead.
 - Verbose & dry‑run modes for full transparency.
 - Per‑repository command log you can inspect or clear at any time.
 
@@ -138,6 +139,13 @@ Undo adding specific files:
 ```bash
 git add file1.go file2.go
 git undo          # unstages file1.go file2.go
+```
+
+Smart guidance for branch operations:
+```bash
+git checkout feature-branch
+git undo          # guides you to use git back instead
+# git-undo ℹ️: Last operation can't be undone. Use git back instead.
 ```
 
 ## Development & Testing

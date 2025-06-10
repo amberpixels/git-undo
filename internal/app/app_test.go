@@ -250,6 +250,68 @@ func (s *GitTestSuite) TestUndoStash() {
 	s.Empty(stashList, "Stash list should be empty after undo")
 }
 
+// TestCheckoutSwitchDetection tests that git undo warns about checkout/switch commands.
+func (s *GitTestSuite) TestCheckoutSwitchDetection() {
+	// Create a test branch
+	s.Git("branch", "test-branch")
+
+	// Perform a checkout operation
+	s.Git("checkout", "test-branch")
+
+	// Capture stderr to check warning output
+	r, w, err := os.Pipe()
+	s.Require().NoError(err)
+	origStderr := os.Stderr
+	os.Stderr = w
+
+	// Run git undo - should warn about checkout
+	err = s.app.Run([]string{})
+
+	// Close writer and restore stderr
+	_ = w.Close()
+	os.Stderr = origStderr
+
+	// Should not error
+	s.Require().NoError(err)
+
+	// Read captured output
+	outBytes, err := io.ReadAll(r)
+	s.Require().NoError(err)
+	output := string(outBytes)
+
+	// Should contain warning about checkout and suggest git back
+	s.Contains(output, "can't be undone", "Should warn that it can't be undone")
+	s.Contains(output, "git back", "Should suggest using git back")
+
+	// Now test with git switch
+	s.Git("switch", "main")
+	s.Git("switch", "test-branch")
+
+	// Capture stderr again
+	r, w, err = os.Pipe()
+	s.Require().NoError(err)
+	os.Stderr = w
+
+	// Run git undo - should warn about switch
+	err = s.app.Run([]string{})
+
+	// Close writer and restore stderr
+	_ = w.Close()
+	os.Stderr = origStderr
+
+	// Should not error
+	s.Require().NoError(err)
+
+	// Read captured output
+	outBytes, err = io.ReadAll(r)
+	s.Require().NoError(err)
+	output = string(outBytes)
+
+	// Should contain warning about switch and suggest git back
+	s.Contains(output, "can't be undone", "Should warn that it can't be undone")
+	s.Contains(output, "git back", "Should suggest using git back")
+}
+
 // TestUndoMerge tests the git merge undo functionality.
 func (s *GitTestSuite) TestUndoMerge() {
 	// Create and switch to a new branch

@@ -918,4 +918,102 @@ teardown() {
     rm -f unstaged.txt
     
     echo "# git switch integration test completed successfully!"
+}
+
+@test "git undo checkout/switch detection - warns and suggests git back" {
+    echo "# ============================================================================"
+    echo "# CHECKOUT/SWITCH DETECTION TEST: Testing that git undo warns for checkout/switch commands"
+    echo "# ============================================================================"
+    
+    # Setup: Create initial commit structure for testing
+    echo "initial content" > initial.txt
+    git add initial.txt
+    git commit -m "Initial commit"
+    
+    echo "main content" > main.txt
+    git add main.txt
+    git commit -m "Main content commit"
+    
+    # Source the hook to enable command tracking
+    source ~/.config/git-undo/git-undo-hook.bash
+    
+    # ============================================================================
+    # Test git checkout detection
+    # ============================================================================
+    echo "# Testing git checkout detection..."
+    
+    # Create a test branch
+    git branch test-branch
+    
+    # Perform checkout operation (should be tracked)
+    git checkout test-branch
+    
+    # Verify we're on the test branch
+    run git branch --show-current
+    assert_success
+    assert_output "test-branch"
+    
+    # Try git undo - should warn about checkout command
+    run git undo 2>&1
+    assert_success
+    assert_output --partial "can't be undone"
+    assert_output --partial "git back"
+    
+    # ============================================================================
+    # Test git switch detection
+    # ============================================================================
+    echo "# Testing git switch detection..."
+    
+    # Switch back to main
+    git switch main
+    
+    # Verify we're on main
+    run git branch --show-current
+    assert_success
+    assert_output "main"
+    
+    # Switch to test branch again
+    git switch test-branch
+    
+    # Try git undo - should warn about switch command
+    run git undo 2>&1
+    assert_success
+    assert_output --partial "can't be undone"
+    assert_output --partial "git back"
+    
+    # ============================================================================
+    # Test that git back still works normally
+    # ============================================================================
+    echo "# Verifying git back still works normally..."
+    
+    # Use git back to return to previous branch
+    run git back
+    assert_success
+    
+    # Should be back on main
+    run git branch --show-current
+    assert_success
+    assert_output "main"
+    
+    # ============================================================================
+    # Test mixed commands - ensure warning only for checkout/switch
+    # ============================================================================
+    echo "# Testing mixed commands - ensuring warning only appears for checkout/switch..."
+    
+    # Create and stage a file
+    echo "test file" > test-warning.txt
+    git add test-warning.txt
+    
+    # Now perform git undo - should work normally (no warning)
+    run git undo
+    assert_success
+    refute_output --partial "can't be undone"
+    refute_output --partial "git back"
+    
+    # Verify file was unstaged
+    run git status --porcelain
+    assert_success
+    assert_output --partial "?? test-warning.txt"
+    
+    echo "# Checkout/switch detection integration test completed successfully!"
 } 

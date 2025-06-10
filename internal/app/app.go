@@ -78,12 +78,29 @@ const (
 	resetColor  = "\033[0m"
 )
 
+// Application names.
+const (
+	appNameGitUndo = "git-undo"
+	appNameGitBack = "git-back"
+)
+
 // getAppName returns the appropriate app name based on mode.
 func (a *App) getAppName() string {
 	if a.isBackMode {
-		return "git-back"
+		return appNameGitBack
 	}
-	return "git-undo"
+	return appNameGitUndo
+}
+
+// isCheckoutOrSwitchCommand checks if a command is a git checkout or git switch command.
+func (a *App) isCheckoutOrSwitchCommand(command string) bool {
+	// Parse the command to check its type
+	gitCmd, err := githelpers.ParseGitCommand(command)
+	if err != nil {
+		return false
+	}
+
+	return gitCmd.Name == "checkout" || gitCmd.Name == "switch"
 }
 
 // logDebugf writes debug messages to stderr when verbose mode is enabled.
@@ -98,6 +115,11 @@ func (a *App) logDebugf(format string, args ...interface{}) {
 // logWarnf writes error messages to stderr.
 func (a *App) logWarnf(format string, args ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌: "+grayColor+format+resetColor+"\n", args...)
+}
+
+// logInfof writes info messages to stderr.
+func (a *App) logInfof(format string, args ...interface{}) {
+	_, _ = fmt.Fprintf(os.Stderr, yellowColor+a.getAppName()+" ℹ️: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // Run executes the main app logic.
@@ -200,6 +222,12 @@ func (a *App) Run(args []string) (err error) {
 		}
 		if lastEntry == nil {
 			a.logDebugf("nothing to undo")
+			return nil
+		}
+
+		// Check if the last command was checkout or switch - suggest git back instead
+		if a.isCheckoutOrSwitchCommand(lastEntry.Command) {
+			a.logInfof("Last operation can't be undone. Use %sgit back%s instead.", yellowColor, resetColor)
 			return nil
 		}
 	}

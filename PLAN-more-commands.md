@@ -38,6 +38,11 @@ This document outlines a comprehensive plan for expanding git-undo command suppo
 |---------|-------------|--------|-------|
 | `git switch` | `git switch -` or branch deletion for `-c/-C` | ✅ **New** | Modern alternative to checkout, full feature parity |
 
+### Smart User Experience Features (✅ Implemented - December 2025)
+| Feature | Implementation | Status | Notes |
+|---------|----------------|--------|-------|
+| **Checkout/Switch Detection** | Friendly info message + `git back` suggestion | ✅ **New** | Prevents confusion when users try to undo branch changes |
+
 ---
 
 ## 🟢 ~~Easy to Implement (Low Hanging Fruit)~~ ✅ **PHASE 1 COMPLETE**
