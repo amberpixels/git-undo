@@ -1,6 +1,7 @@
 package undoer
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -49,7 +50,7 @@ func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
 	}
 	commitMsg = strings.TrimSpace(commitMsg)
 
-	// Revert commits typically start with "Revert" 
+	// Revert commits typically start with "Revert"
 	if !strings.HasPrefix(commitMsg, "Revert") {
 		// Try to be more flexible - check if the most recent commit looks like a revert
 		// by checking the reflog for revert operations
@@ -57,7 +58,7 @@ func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
 		if err == nil {
 			reflogMsg := strings.TrimSpace(reflogOutput)
 			if !strings.Contains(reflogMsg, "revert") {
-				return nil, fmt.Errorf("current HEAD does not appear to be a revert commit, cannot safely undo")
+				return nil, errors.New("current HEAD does not appear to be a revert commit, cannot safely undo")
 			}
 		}
 	}
@@ -71,13 +72,13 @@ func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Check if there are any uncommitted changes that would be lost
 	var warnings []string
-	
+
 	// Check for staged changes
 	stagedOutput, err := r.git.GitOutput("diff", "--cached", "--name-only")
 	if err == nil && strings.TrimSpace(stagedOutput) != "" {
 		warnings = append(warnings, "This will preserve staged changes")
 	}
-	
+
 	// Check for unstaged changes
 	unstagedOutput, err := r.git.GitOutput("diff", "--name-only")
 	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
@@ -86,12 +87,9 @@ func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Use soft reset to preserve working directory and staging area
 	undoCommand := fmt.Sprintf("git reset --soft %s", parentCommit)
-	
+
 	// Safely truncate commit hash
-	shortHash := currentHead
-	if len(currentHead) > 8 {
-		shortHash = currentHead[:8]
-	}
+	shortHash := getShortHash(currentHead)
 	description := fmt.Sprintf("Remove revert commit %s", shortHash)
 
 	return NewUndoCommand(r.git, undoCommand, description, warnings...), nil

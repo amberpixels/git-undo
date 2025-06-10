@@ -20,7 +20,7 @@ func (c *CleanUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Git clean is inherently destructive and removes untracked files permanently.
 	// Unlike other git operations, once files are cleaned, they cannot be recovered
 	// from git's internal state since they were never tracked.
-	
+
 	// Check if this was a dry-run clean
 	isDryRun := false
 	for _, arg := range c.originalCmd.Args {
@@ -43,13 +43,13 @@ func (c *CleanUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Check if there are any backups in a potential backup directory
 	// This is a future enhancement where git-undo could backup files before clean
 	backupDir := ".git/git-undo/clean-backups"
-	
+
 	// Try to find the most recent backup
 	backupList, err := c.git.GitOutput("ls", "-la", backupDir)
 	if err != nil || strings.TrimSpace(backupList) == "" {
 		// No backups available
 		return nil, fmt.Errorf("%w: git clean permanently removes untracked files that cannot be recovered. "+
-			"To enable git clean undo in the future, consider implementing pre-clean backup hooks", 
+			"To enable git clean undo in the future, consider implementing pre-clean backup hooks",
 			ErrUndoNotSupported)
 	}
 

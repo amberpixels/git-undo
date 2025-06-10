@@ -1,10 +1,12 @@
-package undoer
+package undoer_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResetUndoer_GetUndoCommand(t *testing.T) {
@@ -23,7 +25,8 @@ func TestResetUndoer_GetUndoCommand(t *testing.T) {
 			command: "git reset --soft HEAD~1",
 			setupMock: func(m *MockGitExec) {
 				m.On("GitOutput", "rev-parse", "HEAD").Return("abc123", nil)
-				m.On("GitOutput", "reflog", "-n", "2", "--format=%H %s").Return("abc123 reset: moving to HEAD~1\ndef456 commit: test message", nil)
+				m.On("GitOutput", "reflog", "-n", "2", "--format=%H %s").
+					Return("abc123 reset: moving to HEAD~1\ndef456 commit: test message", nil)
 			},
 			expectedCmd:  "git reset --soft def456",
 			expectedDesc: "Reset HEAD back to def456 (preserving index and working tree)",
@@ -34,7 +37,8 @@ func TestResetUndoer_GetUndoCommand(t *testing.T) {
 			command: "git reset HEAD~1",
 			setupMock: func(m *MockGitExec) {
 				m.On("GitOutput", "rev-parse", "HEAD").Return("abc123", nil)
-				m.On("GitOutput", "reflog", "-n", "2", "--format=%H %s").Return("abc123 reset: moving to HEAD~1\ndef456 commit: test message", nil)
+				m.On("GitOutput", "reflog", "-n", "2", "--format=%H %s").
+					Return("abc123 reset: moving to HEAD~1\ndef456 commit: test message", nil)
 			},
 			expectedCmd:  "git reset def456",
 			expectedDesc: "Reset HEAD and index back to def456 (preserving working tree)",
@@ -45,7 +49,8 @@ func TestResetUndoer_GetUndoCommand(t *testing.T) {
 			command: "git reset --hard HEAD~1",
 			setupMock: func(m *MockGitExec) {
 				m.On("GitOutput", "rev-parse", "HEAD").Return("abc123", nil)
-				m.On("GitOutput", "reflog", "-n", "2", "--format=%H %s").Return("abc123 reset: moving to HEAD~1\ndef456 commit: test message", nil)
+				m.On("GitOutput", "reflog", "-n", "2", "--format=%H %s").
+					Return("abc123 reset: moving to HEAD~1\ndef456 commit: test message", nil)
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("staged.txt", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("unstaged.txt", nil)
 			},
@@ -80,23 +85,20 @@ func TestResetUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &ResetUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			resetUndoer := undoer.NewResetUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := resetUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)

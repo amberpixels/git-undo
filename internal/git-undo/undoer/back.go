@@ -30,6 +30,7 @@ func (b *BackUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Remove the refs/heads/ prefix if present to get just the branch name
 	prevBranch = strings.TrimPrefix(prevBranch, "refs/heads/")
+	_ = prevBranch // TODO: fixme.. do we need prevBranch at all?
 
 	// Check working directory status to detect potential conflicts
 	warnings := []string{}
@@ -61,7 +62,7 @@ func (b *BackUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Use "git checkout -" to go back to the previous branch/commit
 	return NewUndoCommand(b.git,
 		"git checkout -",
-		fmt.Sprintf("Switch back to previous branch/commit"),
+		"Switch back to previous branch/commit",
 		warnings...,
 	), nil
 }

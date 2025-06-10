@@ -1,10 +1,12 @@
-package undoer
+package undoer_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCleanUndoer_GetUndoCommand(t *testing.T) {
@@ -20,7 +22,7 @@ func TestCleanUndoer_GetUndoCommand(t *testing.T) {
 		{
 			name:          "dry-run clean",
 			command:       "git clean -n",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "dry-run clean operations don't modify files",
 		},
@@ -49,23 +51,20 @@ func TestCleanUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &CleanUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			cleanUndoer := undoer.NewCleanUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := cleanUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)

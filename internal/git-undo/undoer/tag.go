@@ -26,35 +26,35 @@ func (t *TagUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Find the tag name - it's the first non-flag argument
 	tagName := ""
 	skipNext := false
-	
+
 	for _, arg := range t.originalCmd.Args {
 		if skipNext {
 			skipNext = false
 			continue
 		}
-		
+
 		// Handle flags with embedded values (e.g., -m="message")
 		if strings.Contains(arg, "=") && strings.HasPrefix(arg, "-") {
 			continue
 		}
-		
+
 		// Skip flags that take values as next argument
 		if arg == "-a" || arg == "--annotate" {
 			// These don't take values, they're just flags
 			continue
 		}
-		if arg == "-m" || arg == "--message" || 
-		   arg == "-F" || arg == "--file" || arg == "-s" || arg == "--sign" ||
-		   arg == "-u" || arg == "--local-user" {
+		if arg == "-m" || arg == "--message" ||
+			arg == "-F" || arg == "--file" || arg == "-s" || arg == "--sign" ||
+			arg == "-u" || arg == "--local-user" {
 			skipNext = true
 			continue
 		}
-		
+
 		// Skip other flags
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		
+
 		// This should be the tag name
 		tagName = arg
 		break

@@ -1,10 +1,12 @@
-package undoer
+package undoer_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRmUndoer_GetUndoCommand(t *testing.T) {
@@ -18,11 +20,9 @@ func TestRmUndoer_GetUndoCommand(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name:    "cached removal",
-			command: "git rm --cached file.txt",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for cached removal
-			},
+			name:         "cached removal",
+			command:      "git rm --cached file.txt",
+			setupMock:    func(_ *MockGitExec) {},
 			expectedCmd:  "git add file.txt",
 			expectedDesc: "Re-add files to index: file.txt",
 			expectError:  false,
@@ -59,7 +59,7 @@ func TestRmUndoer_GetUndoCommand(t *testing.T) {
 		{
 			name:          "dry run command",
 			command:       "git rm -n file.txt",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "dry-run",
 		},
@@ -70,23 +70,20 @@ func TestRmUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &RmUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			rmUndoer := undoer.NewRmUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := rmUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)

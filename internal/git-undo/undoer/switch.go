@@ -40,7 +40,7 @@ func (s *SwitchUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Handle regular branch switching (go back to previous branch)
 	// This is similar to git checkout behavior - we want to return to previous branch
-	
+
 	// First, check if we have a previous branch to go back to
 	prevBranch, err := s.git.GitOutput("rev-parse", "--symbolic-full-name", "@{-1}")
 	if err != nil {

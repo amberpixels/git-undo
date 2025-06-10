@@ -1,9 +1,11 @@
-package undoer
+package undoer_test
 
 import (
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRestoreUndoer_GetUndoCommand(t *testing.T) {
@@ -17,11 +19,9 @@ func TestRestoreUndoer_GetUndoCommand(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name:    "staged restore",
-			command: "git restore --staged file.txt",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for staged restore
-			},
+			name:         "staged restore",
+			command:      "git restore --staged file.txt",
+			setupMock:    func(_ *MockGitExec) {},
 			expectedCmd:  "git add file.txt",
 			expectedDesc: "Re-stage files: file.txt",
 			expectError:  false,
@@ -29,21 +29,21 @@ func TestRestoreUndoer_GetUndoCommand(t *testing.T) {
 		{
 			name:          "worktree restore",
 			command:       "git restore file.txt",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "cannot undo git restore --worktree",
 		},
 		{
 			name:          "restore with source",
 			command:       "git restore --source=HEAD~1 file.txt",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "cannot undo git restore with --source",
 		},
 		{
 			name:          "no files specified",
 			command:       "git restore --staged",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "no files found",
 		},
@@ -54,23 +54,20 @@ func TestRestoreUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &RestoreUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			restoreUndoer := undoer.NewRestoreUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := restoreUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)

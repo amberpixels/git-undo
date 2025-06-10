@@ -1,6 +1,7 @@
 package undoer
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -15,13 +16,15 @@ type ResetUndoer struct {
 var _ Undoer = &ResetUndoer{}
 
 // GetUndoCommand returns the command that would undo the reset operation.
+//
+//nolint:goconst // we're having lot of string git commands here
 func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// First, get the current HEAD to know where we are now
-	currentHead, err := r.git.GitOutput("rev-parse", "HEAD")
+	//TODO: do we actually need HEAD here?
+	_, err := r.git.GitOutput("rev-parse", "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("cannot determine current HEAD: %w", err)
 	}
-	currentHead = strings.TrimSpace(currentHead)
 
 	// Get the reflog to find the previous HEAD position
 	// The reflog entry should show what HEAD was before this reset
@@ -32,7 +35,7 @@ func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	lines := strings.Split(strings.TrimSpace(reflogOutput), "\n")
 	if len(lines) < 2 {
-		return nil, fmt.Errorf("insufficient reflog history to undo reset")
+		return nil, errors.New("insufficient reflog history to undo reset")
 	}
 
 	// Parse the second line (the state before current reset)
@@ -45,7 +48,7 @@ func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Determine the reset mode from the original command
 	resetMode := r.getResetMode()
-	
+
 	// Check if we have staged changes that would be lost
 	var warnings []string
 	if resetMode == "hard" {
@@ -54,7 +57,7 @@ func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 		if err == nil && strings.TrimSpace(stagedOutput) != "" {
 			warnings = append(warnings, "This will discard all staged changes")
 		}
-		
+
 		// Check for unstaged changes
 		unstagedOutput, err := r.git.GitOutput("diff", "--name-only")
 		if err == nil && strings.TrimSpace(unstagedOutput) != "" {
@@ -67,10 +70,7 @@ func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 	var description string
 
 	// Helper function to safely truncate commit hash
-	shortHash := previousHead
-	if len(previousHead) > 8 {
-		shortHash = previousHead[:8]
-	}
+	shortHash := getShortHash(previousHead)
 
 	switch resetMode {
 	case "soft":
@@ -93,7 +93,7 @@ func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 	return NewUndoCommand(r.git, undoCommand, description, warnings...), nil
 }
 
-// getResetMode determines the reset mode from the original command arguments
+// getResetMode determines the reset mode from the original command arguments.
 func (r *ResetUndoer) getResetMode() string {
 	for _, arg := range r.originalCmd.Args {
 		switch arg {

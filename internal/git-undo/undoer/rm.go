@@ -1,6 +1,7 @@
 package undoer
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -20,14 +21,14 @@ func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
 	var isCachedOnly bool
 	var isRecursive bool
 	var files []string
-	
+
 	skipNext := false
 	for _, arg := range r.originalCmd.Args {
 		if skipNext {
 			skipNext = false
 			continue
 		}
-		
+
 		switch arg {
 		case "--cached":
 			isCachedOnly = true
@@ -43,21 +44,19 @@ func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
 				if strings.Contains(arg, "r") {
 					isRecursive = true
 				}
-				if strings.Contains(arg, "f") {
-					// force flag, no special handling needed
-				}
-				// Skip other unknown flags
+				// No special handling for `f` force flag
+				// or other unknown flags
 			} else {
 				// This is a file/directory argument
 				files = append(files, arg)
 			}
 		}
 	}
-	
+
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no files found in rm command: %s", r.originalCmd.FullCommand)
 	}
-	
+
 	// Build the undo command based on what was removed
 	if isCachedOnly {
 		// git rm --cached only removes from index, files still exist in working directory
@@ -67,7 +66,7 @@ func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
 			fmt.Sprintf("Re-add files to index: %s", strings.Join(files, ", ")),
 		), nil
 	}
-	
+
 	// For regular git rm (removes from both index and working directory)
 	// We need to restore from the last commit
 	// Check if HEAD exists
@@ -75,17 +74,17 @@ func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if err := r.git.GitRun("rev-parse", "--verify", "HEAD"); err != nil {
 		headExists = false
 	}
-	
+
 	if !headExists {
-		return nil, fmt.Errorf("cannot undo git rm: no HEAD commit exists to restore files from")
+		return nil, errors.New("cannot undo git rm: no HEAD commit exists to restore files from")
 	}
-	
+
 	// First restore the files from HEAD, then add them to index
 	var warnings []string
 	if isRecursive {
 		warnings = append(warnings, "This was a recursive removal - all files and subdirectories will be restored")
 	}
-	
+
 	// Use git restore to bring back both working tree and staged versions
 	return NewUndoCommand(r.git,
 		fmt.Sprintf("git restore --source=HEAD --staged --worktree %s", strings.Join(files, " ")),

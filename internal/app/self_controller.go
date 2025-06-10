@@ -68,12 +68,20 @@ func (sc *SelfController) HandleSelfCommand(args []string) error {
 	switch selfCommand {
 	case CommandUpdate:
 		if sc.appName == appNameGitBack {
-			return fmt.Errorf("%s does not support update command. Use %s self update instead", appNameGitBack, appNameGitUndo)
+			return fmt.Errorf(
+				"%s does not support update command. Use %s self update instead",
+				appNameGitBack,
+				appNameGitUndo,
+			)
 		}
 		return sc.cmdSelfUpdate()
 	case CommandUninstall:
 		if sc.appName == appNameGitBack {
-			return fmt.Errorf("%s does not support uninstall command. Use %s self uninstall instead", appNameGitBack, appNameGitUndo)
+			return fmt.Errorf(
+				"%s does not support uninstall command. Use %s self uninstall instead",
+				appNameGitBack,
+				appNameGitUndo,
+			)
 		}
 		return sc.cmdSelfUninstall()
 	case CommandVersion:

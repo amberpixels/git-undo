@@ -1,10 +1,12 @@
-package undoer
+package undoer_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
@@ -33,11 +35,9 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 			expectError:  false,
 		},
 		{
-			name:    "cherry-pick with no-commit",
-			command: "git cherry-pick --no-commit abc123",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for --no-commit
-			},
+			name:         "cherry-pick with no-commit",
+			command:      "git cherry-pick --no-commit abc123",
+			setupMock:    func(_ *MockGitExec) {},
 			expectedCmd:  "git reset --mixed HEAD",
 			expectedDesc: "Reset staged cherry-pick changes",
 			expectError:  false,
@@ -72,23 +72,20 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &CherryPickUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			cherryPickUndoer := undoer.NewCherryPickUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := cherryPickUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)

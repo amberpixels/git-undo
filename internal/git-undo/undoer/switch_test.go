@@ -1,10 +1,12 @@
-package undoer
+package undoer_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSwitchUndoer_GetUndoCommand(t *testing.T) {
@@ -19,42 +21,34 @@ func TestSwitchUndoer_GetUndoCommand(t *testing.T) {
 		expectWarnings bool
 	}{
 		{
-			name:    "branch creation with -c",
-			command: "git switch -c feature-branch",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for branch creation
-			},
+			name:         "branch creation with -c",
+			command:      "git switch -c feature-branch",
+			setupMock:    func(_ *MockGitExec) {},
 			expectedCmd:  "git branch -D feature-branch",
 			expectedDesc: "Delete branch 'feature-branch' created by switch -c",
 			expectError:  false,
 		},
 		{
-			name:    "branch creation with --create",
-			command: "git switch --create new-feature",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for branch creation
-			},
+			name:         "branch creation with --create",
+			command:      "git switch --create new-feature",
+			setupMock:    func(_ *MockGitExec) {},
 			expectedCmd:  "git branch -D new-feature",
 			expectedDesc: "Delete branch 'new-feature' created by switch -c",
 			expectError:  false,
 		},
 		{
-			name:    "force branch creation with -C",
-			command: "git switch -C hotfix main",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for branch creation
-			},
+			name:           "force branch creation with -C",
+			command:        "git switch -C hotfix main",
+			setupMock:      func(_ *MockGitExec) {},
 			expectedCmd:    "git branch -D hotfix",
 			expectedDesc:   "Delete branch 'hotfix' created by switch -C",
 			expectError:    false,
 			expectWarnings: true,
 		},
 		{
-			name:    "force branch creation with --force-create",
-			command: "git switch --force-create existing-branch",
-			setupMock: func(m *MockGitExec) {
-				// No mocks needed for branch creation
-			},
+			name:           "force branch creation with --force-create",
+			command:        "git switch --force-create existing-branch",
+			setupMock:      func(_ *MockGitExec) {},
 			expectedCmd:    "git branch -D existing-branch",
 			expectedDesc:   "Delete branch 'existing-branch' created by switch -C",
 			expectError:    false,
@@ -91,7 +85,8 @@ func TestSwitchUndoer_GetUndoCommand(t *testing.T) {
 			name:    "no previous branch",
 			command: "git switch feature",
 			setupMock: func(m *MockGitExec) {
-				m.On("GitOutput", "rev-parse", "--symbolic-full-name", "@{-1}").Return("", errors.New("no previous branch"))
+				m.On("GitOutput", "rev-parse", "--symbolic-full-name", "@{-1}").
+					Return("", errors.New("no previous branch"))
 			},
 			expectError:   true,
 			errorContains: "no previous branch to return to",
@@ -125,23 +120,20 @@ func TestSwitchUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &SwitchUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			switchUndoer := undoer.NewSwitchUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := switchUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)

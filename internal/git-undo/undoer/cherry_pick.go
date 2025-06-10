@@ -1,6 +1,7 @@
 package undoer
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -69,7 +70,7 @@ func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
 				commitMsg = strings.TrimSpace(commitMsg)
 				// Cherry-picked commits often have (cherry picked from commit ...) suffix
 				if !strings.Contains(commitMsg, "cherry picked from commit") {
-					return nil, fmt.Errorf("current HEAD does not appear to be a cherry-pick commit")
+					return nil, errors.New("current HEAD does not appear to be a cherry-pick commit")
 				}
 			}
 		}
@@ -84,13 +85,13 @@ func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Check if there are any uncommitted changes that would be preserved
 	var warnings []string
-	
+
 	// Check for staged changes
 	stagedOutput, err := c.git.GitOutput("diff", "--cached", "--name-only")
 	if err == nil && strings.TrimSpace(stagedOutput) != "" {
 		warnings = append(warnings, "This will preserve staged changes")
 	}
-	
+
 	// Check for unstaged changes
 	unstagedOutput, err := c.git.GitOutput("diff", "--name-only")
 	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
@@ -99,12 +100,10 @@ func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Use soft reset to preserve working directory and staging area
 	undoCommand := fmt.Sprintf("git reset --soft %s", parentCommit)
-	
+
 	// Safely truncate commit hash
-	shortHash := currentHead
-	if len(currentHead) > 8 {
-		shortHash = currentHead[:8]
-	}
+	shortHash := getShortHash(currentHead)
+
 	description := fmt.Sprintf("Remove cherry-pick commit %s", shortHash)
 
 	return NewUndoCommand(c.git, undoCommand, description, warnings...), nil

@@ -251,6 +251,8 @@ func (s *GitTestSuite) TestUndoStash() {
 }
 
 // TestCheckoutSwitchDetection tests that git undo warns about checkout/switch commands.
+//
+//nolint:reassign // in tests it's OK
 func (s *GitTestSuite) TestCheckoutSwitchDetection() {
 	// Create a test branch
 	s.Git("branch", "test-branch")

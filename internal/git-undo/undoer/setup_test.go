@@ -1,10 +1,10 @@
-package undoer
+package undoer_test
 
 import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockGitExec is a mock implementation of GitExec for testing
+// MockGitExec is a mock implementation of GitExec for testing.
 type MockGitExec struct {
 	mock.Mock
 }

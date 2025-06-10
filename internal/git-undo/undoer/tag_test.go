@@ -1,10 +1,12 @@
-package undoer
+package undoer_test
 
 import (
 	"errors"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTagUndoer_GetUndoCommand(t *testing.T) {
@@ -40,13 +42,13 @@ func TestTagUndoer_GetUndoCommand(t *testing.T) {
 		{
 			name:          "tag deletion command",
 			command:       "git tag -d v1.0.0",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "tag deletion",
 		},
 		{
-			name:          "tag doesn't exist",
-			command:       "git tag v3.0.0",
+			name:    "tag doesn't exist",
+			command: "git tag v3.0.0",
 			setupMock: func(m *MockGitExec) {
 				m.On("GitRun", "rev-parse", "--verify", "refs/tags/v3.0.0").Return(errors.New("tag not found"))
 			},
@@ -56,7 +58,7 @@ func TestTagUndoer_GetUndoCommand(t *testing.T) {
 		{
 			name:          "no tag name found",
 			command:       "git tag -l",
-			setupMock:     func(m *MockGitExec) {},
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "no tag name found",
 		},
@@ -67,23 +69,20 @@ func TestTagUndoer_GetUndoCommand(t *testing.T) {
 			mockGit := new(MockGitExec)
 			tt.setupMock(mockGit)
 
-			cmdDetails, err := ParseGitCommand(tt.command)
-			assert.NoError(t, err)
+			cmdDetails, err := undoer.ParseGitCommand(tt.command)
+			require.NoError(t, err)
 
-			undoer := &TagUndoer{
-				git:         mockGit,
-				originalCmd: cmdDetails,
-			}
+			tagUndoer := undoer.NewTagUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := undoer.GetUndoCommand()
+			undoCmd, err := tagUndoer.GetUndoCommand()
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorContains != "" {
 					assert.Contains(t, err.Error(), tt.errorContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, undoCmd)
 				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
 				assert.Equal(t, tt.expectedDesc, undoCmd.Description)
