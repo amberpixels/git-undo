@@ -81,7 +81,7 @@ func ParseGitCommand(raw string) (*GitCommand, error) {
 
 // String returns a human-readable representation of the command.
 func (c *GitCommand) String() string {
-	return strings.TrimSpace(fmt.Sprintf("%s %s", c.Name, strings.Join(c.Args, " ")))
+	return strings.TrimSpace(fmt.Sprintf("%s %s %s", "git", c.Name, strings.Join(c.Args, " ")))
 }
 
 // Normalize normalizes the command to a canonical form.

@@ -159,16 +159,21 @@ func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
 	normalizedTime := time.Now().Truncate(2 * time.Second)
 	cmdIdentifier := l.createCommandIdentifier(strGitCommand, ref, normalizedTime)
 
-	// Check if we're in a git hook (vs shell hook)
+	// Check if we already handled this by other hook.
 	isGitHook := l.isGitHookContext()
 
-	if isGitHook {
-		// Git hook runs first: mark that we're logging this command
-		l.markLoggedByGitHook(cmdIdentifier)
-	} else if l.wasRecentlyLoggedByGitHook(cmdIdentifier) {
-		// Shell hook runs second: check if git hook already logged this command
-		// Git hook already logged this, skip to avoid duplicate
+	if isGitHook && l.wasRecentlyLoggedByShellHook(cmdIdentifier) {
 		return nil
+	}
+	if !isGitHook && l.wasRecentlyLoggedByGitHook(cmdIdentifier) {
+		return nil
+	}
+
+	// Mark:
+	if isGitHook {
+		l.markLoggedByGitHook(cmdIdentifier)
+	} else {
+		l.markLoggedByShellHook(cmdIdentifier)
 	}
 
 	return l.prependLogEntry((&Entry{
@@ -205,6 +210,7 @@ func (l *Logger) normalizeGitCommand(cmd string) string {
 		return cmd
 	}
 
+	// NormalizedString() already includes "git" prefix via String() method
 	return normalizedStr
 }
 
@@ -232,35 +238,35 @@ func (l *Logger) isGitHookContext() bool {
 	return false
 }
 
-// // wasRecentlyLoggedByShellHook checks if this command was recently logged by shell hook.
-// func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
-// 	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+// wasRecentlyLoggedByShellHook checks if this command was recently logged by shell hook.
+func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
+	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
 
-// 	// Check if flag file exists and is recent (within last 10 seconds)
-// 	if stat, err := os.Stat(flagFile); err == nil {
-// 		age := time.Since(stat.ModTime())
-// 		if age < 10*time.Second {
-// 			return true
-// 		}
-// 		// Clean up old flag file
-// 		_ = os.Remove(flagFile)
-// 	}
+	// Check if flag file exists and is recent (within last 10 seconds)
+	if stat, err := os.Stat(flagFile); err == nil {
+		age := time.Since(stat.ModTime())
+		if age < 10*time.Second {
+			return true
+		}
+		// Clean up old flag file
+		_ = os.Remove(flagFile)
+	}
 
-// 	return false
-// }
+	return false
+}
 
-// // markLoggedByShellHook marks that this command was logged by shell hook.
-// func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
-// 	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+// markLoggedByShellHook marks that this command was logged by shell hook.
+func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
+	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
 
-// 	// Create flag file
-// 	if file, err := os.Create(flagFile); err == nil {
-// 		file.Close()
-// 	}
+	// Create flag file
+	if file, err := os.Create(flagFile); err == nil {
+		_ = file.Close()
+	}
 
-// 	// Clean up old flag files in background (best effort)
-// 	go l.cleanupOldFlagFiles()
-// }
+	// Clean up old flag files in background (best effort)
+	go l.cleanupOldFlagFiles()
+}
 
 // cleanupOldFlagFiles removes flag files older than 30 seconds.
 func (l *Logger) cleanupOldFlagFiles() {
