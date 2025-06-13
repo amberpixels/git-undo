@@ -40,4 +40,6 @@ go.work.sum
 # generated result of aictx itself
 output.txt
 
+.claude
+
 /build
