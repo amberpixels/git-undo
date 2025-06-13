@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091
 source "$(dirname "$0")/common.sh"
 
 scrub_rc() {
@@ -32,40 +33,46 @@ main() {
     log "Starting uninstallation..."
 
     # 1) Remove binary
-    echo -en "${GRAY}git-undo:${RESET} 1. Removing binary..."
+    echo -en "${GRAY}git-undo:${NC} 1. Removing binary..."
     if [[ -f "$BIN_PATH" ]]; then
         rm -f "$BIN_PATH"
-        echo -e " ${GREEN}OK${RESET}"
+        echo -e " ${GREEN}OK${NC}"
     else
-        echo -e " ${YELLOW}SKIP${RESET} (not found)"
+        echo -e " ${YELLOW}SKIP${NC} (not found)"
     fi
 
     # 2) Clean shell configuration files
-    echo -en "${GRAY}git-undo:${RESET} 2. Cleaning shell configurations..."
+    echo -en "${GRAY}git-undo:${NC} 2. Cleaning shell configurations..."
     local cleaned_files=0
 
     # Check each rc file and count successful cleanings
-    scrub_rc "$HOME/.zshrc" && ((cleaned_files++)) || true
-    scrub_rc "$HOME/.bashrc" && ((cleaned_files++)) || true
-    scrub_rc "$HOME/.bash_profile" && ((cleaned_files++)) || true
+    if scrub_rc "$HOME/.zshrc"; then
+        ((cleaned_files++))
+    fi
+    if scrub_rc "$HOME/.bashrc"; then
+        ((cleaned_files++))
+    fi
+    if scrub_rc "$HOME/.bash_profile"; then
+        ((cleaned_files++))
+    fi
 
     if [ $cleaned_files -gt 0 ]; then
-        echo -e " ${GREEN}OK${RESET} ($cleaned_files files)"
+        echo -e " ${GREEN}OK${NC} ($cleaned_files files)"
     else
-        echo -e " ${YELLOW}SKIP${RESET} (no hook lines found)"
+        echo -e " ${YELLOW}SKIP${NC} (no hook lines found)"
     fi
 
     # 3) Remove config directory
-    echo -en "${GRAY}git-undo:${RESET} 3. Removing config directory..."
+    echo -en "${GRAY}git-undo:${NC} 3. Removing config directory..."
     if [[ -d "$CFG_DIR" ]]; then
         rm -rf "$CFG_DIR"
-        echo -e " ${GREEN}OK${RESET}"
+        echo -e " ${GREEN}OK${NC}"
     else
-        echo -e " ${YELLOW}SKIP${RESET} (not found)"
+        echo -e " ${YELLOW}SKIP${NC} (not found)"
     fi
 
     # 4) Git hooks
-    echo -en "${GRAY}git-undo:${RESET} 4. Cleaning git hooks…"
+    echo -en "${GRAY}git-undo:${NC} 4. Cleaning git hooks…"
     if [[ "$(git config --global --get core.hooksPath)" == "$GIT_HOOKS_DIR" ]]; then
         git config --global --unset core.hooksPath
     fi
@@ -77,10 +84,10 @@ main() {
         done
     done
     rm -f "$DISPATCHER_FILE"
-    echo -e " ${GREEN}OK${RESET}"
+    echo -e " ${GREEN}OK${NC}"
 
     # 5) Final message
-    log "${GREEN}Uninstallation completed successfully!${RESET}"
+    log "${GREEN}Uninstallation completed successfully!${NC}"
 }
 
 main "$@"

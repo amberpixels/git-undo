@@ -1,10 +1,13 @@
+#!/usr/bin/env zsh
+# shellcheck disable=all
 # Function to store the git command temporarily
 store_git_command() {
   local raw_cmd="$1"
   local head=${raw_cmd%% *}
   local rest=${raw_cmd#"$head"}
   if alias "$head" &>/dev/null; then
-    local def=$(alias "$head")
+    local def
+    def=$(alias "$head")
     local expansion=${def#*\'}
     expansion=${expansion%\'}
     raw_cmd="${expansion}${rest}"

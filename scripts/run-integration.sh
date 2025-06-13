@@ -8,7 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared colors and logging functions
-source "$SCRIPT_DIR/colors.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/src/colors.sh"
 
 # Parse command line arguments
 MODE="dev"  # Default to dev mode for local testing
