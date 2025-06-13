@@ -100,7 +100,7 @@ var readOnlyFlags = map[string]map[string]struct{}{
 		"--all":     {},
 	},
 	"checkout": {
-		"-b": {}, // create and switch to new branch
+		// No read-only flags for checkout - all flags are mutating
 	},
 	"tag": {
 		"-l":     {},
