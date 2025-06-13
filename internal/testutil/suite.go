@@ -79,6 +79,7 @@ func (s *GitTestSuite) RunCmdWithEnv(extraEnv []string, cmd string, args ...stri
 	if extraEnv != nil {
 		c.Env = append(os.Environ(), extraEnv...)
 	}
+
 	out, err := c.CombinedOutput()
 	s.Require().NoError(err, "Command failed: %s %v\n%s", cmd, args, out)
 
