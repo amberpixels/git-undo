@@ -5,5 +5,5 @@ package githelpers
 // Actually we should just do IsReadOnlyCommand = isReadOnlyCommand and test on it.
 func IsReadOnlyGitCommand(command string) bool {
 	parsed, err := ParseGitCommand(command)
-	return err == nil && parsed.Supported && parsed.IsReadOnly
+	return err == nil && parsed.Supported && parsed.BehaviorType == ReadOnly
 }

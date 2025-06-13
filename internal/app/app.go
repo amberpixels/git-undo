@@ -291,7 +291,7 @@ func (a *App) cmdHook(lgr *logging.Logger, hookArg string) error {
 		a.logDebugf("hook: skipping as invalid git command %q", hooked)
 		return nil //nolint:nilerr // We're fine with this
 	}
-	if gitCmd.IsReadOnly {
+	if !gitCmd.ShouldBeLogged() {
 		a.logDebugf("hook: skipping as a read-only command: %q", hooked)
 		return nil
 	}

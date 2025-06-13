@@ -6,6 +6,7 @@ import (
 
 	"github.com/amberpixels/git-undo/internal/githelpers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsReadOnlyGitCommand(t *testing.T) {
@@ -538,11 +539,11 @@ func TestParseGitCommand_Undo(t *testing.T) {
 			name:    "undo command is valid",
 			command: "git undo",
 			want: &githelpers.GitCommand{
-				Name:       "undo",
-				Args:       []string{},
-				Supported:  true,
-				Type:       githelpers.Custom,
-				IsReadOnly: false,
+				Name:         "undo",
+				Args:         []string{},
+				Supported:    true,
+				Type:         githelpers.Custom,
+				BehaviorType: githelpers.Mutating,
 			},
 			wantErr: false,
 		},
@@ -550,11 +551,11 @@ func TestParseGitCommand_Undo(t *testing.T) {
 			name:    "undo with --log is read-only",
 			command: "git undo --log",
 			want: &githelpers.GitCommand{
-				Name:       "undo",
-				Args:       []string{"--log"},
-				Supported:  true,
-				Type:       githelpers.Custom,
-				IsReadOnly: true,
+				Name:         "undo",
+				Args:         []string{"--log"},
+				Supported:    true,
+				Type:         githelpers.Custom,
+				BehaviorType: githelpers.ReadOnly,
 			},
 			wantErr: false,
 		},
@@ -562,11 +563,11 @@ func TestParseGitCommand_Undo(t *testing.T) {
 			name:    "undo with --hook is not supported",
 			command: "git undo --hook",
 			want: &githelpers.GitCommand{
-				Name:       "undo",
-				Args:       []string{"--hook"},
-				Supported:  false,
-				Type:       githelpers.Custom,
-				IsReadOnly: false,
+				Name:         "undo",
+				Args:         []string{"--hook"},
+				Supported:    false,
+				Type:         githelpers.Custom,
+				BehaviorType: githelpers.Mutating,
 			},
 			wantErr: false,
 		},
@@ -574,11 +575,11 @@ func TestParseGitCommand_Undo(t *testing.T) {
 			name:    "undo with other args is valid and not read-only",
 			command: "git undo --some-arg value",
 			want: &githelpers.GitCommand{
-				Name:       "undo",
-				Args:       []string{"--some-arg", "value"},
-				Supported:  true,
-				Type:       githelpers.Custom,
-				IsReadOnly: false,
+				Name:         "undo",
+				Args:         []string{"--some-arg", "value"},
+				Supported:    true,
+				Type:         githelpers.Custom,
+				BehaviorType: githelpers.Mutating,
 			},
 			wantErr: false,
 		},
@@ -609,8 +610,233 @@ func TestParseGitCommand_Undo(t *testing.T) {
 			if got.Type != tt.want.Type {
 				t.Errorf("ParseGitCommand() Type = %v, want %v", got.Type, tt.want.Type)
 			}
-			if got.IsReadOnly != tt.want.IsReadOnly {
-				t.Errorf("ParseGitCommand() IsReadOnly = %v, want %v", got.IsReadOnly, tt.want.IsReadOnly)
+			if got.BehaviorType != tt.want.BehaviorType {
+				t.Errorf("ParseGitCommand() BehaviorType = %v, want %v", got.BehaviorType, tt.want.BehaviorType)
+			}
+		})
+	}
+}
+
+func TestCheckoutCommandReadOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected githelpers.BehaviorType
+	}{
+		{
+			name:     "checkout with branch name (navigating)",
+			command:  "git checkout main",
+			expected: githelpers.Navigating,
+		},
+		{
+			name:     "checkout with -b flag and branch name (mutating - creates branch)",
+			command:  "git checkout -b new-branch",
+			expected: githelpers.Mutating,
+		},
+		{
+			name:     "checkout with -b and --branch flags (mutating)",
+			command:  "git checkout --branch new-branch",
+			expected: githelpers.Mutating,
+		},
+		{
+			name:     "checkout with only flags (read-only)",
+			command:  "git checkout -b",
+			expected: githelpers.ReadOnly, // Only flags, no target
+		},
+		{
+			name:     "checkout with multiple flags and branch",
+			command:  "git checkout -b -t origin/feature new-feature",
+			expected: githelpers.Mutating,
+		},
+		{
+			name:     "checkout with - (previous branch, navigating)",
+			command:  "git checkout -",
+			expected: githelpers.Navigating,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gitCmd, err := githelpers.ParseGitCommand(tt.command)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, gitCmd.BehaviorType,
+				"Command %q should have behavior: %v, but got: %v",
+				tt.command, tt.expected, gitCmd.BehaviorType)
+		})
+	}
+}
+
+func TestSwitchCommandReadOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected githelpers.BehaviorType
+	}{
+		{
+			name:     "switch with branch name (navigating)",
+			command:  "git switch main",
+			expected: githelpers.Navigating,
+		},
+		{
+			name:     "switch with -c flag and branch name (mutating - creates branch)",
+			command:  "git switch -c new-branch",
+			expected: githelpers.Mutating,
+		},
+		{
+			name:     "switch with --create flag and branch name (mutating)",
+			command:  "git switch --create new-branch",
+			expected: githelpers.Mutating,
+		},
+		{
+			name:     "switch with only flags (read-only)",
+			command:  "git switch -c",
+			expected: githelpers.ReadOnly, // Only flags, no target
+		},
+		{
+			name:     "switch with - (previous branch, navigating)",
+			command:  "git switch -",
+			expected: githelpers.Navigating,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gitCmd, err := githelpers.ParseGitCommand(tt.command)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, gitCmd.BehaviorType,
+				"Command %q should have behavior: %v, but got: %v",
+				tt.command, tt.expected, gitCmd.BehaviorType)
+		})
+	}
+}
+
+func TestBehaviorTypeClassification(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected githelpers.BehaviorType
+		reason   string
+	}{
+		// Always mutating commands
+		{
+			name:     "git add",
+			command:  "git add file.txt",
+			expected: githelpers.Mutating,
+			reason:   "Always stages files",
+		},
+		{
+			name:     "git commit",
+			command:  "git commit -m 'message'",
+			expected: githelpers.Mutating,
+			reason:   "Always creates commits",
+		},
+
+		// Always read-only commands
+		{
+			name:     "git status",
+			command:  "git status",
+			expected: githelpers.ReadOnly,
+			reason:   "Only shows status",
+		},
+		{
+			name:     "git log",
+			command:  "git log",
+			expected: githelpers.ReadOnly,
+			reason:   "Only shows history",
+		},
+
+		// Conditional commands - checkout
+		{
+			name:     "checkout creates branch (mutating)",
+			command:  "git checkout -b new-branch",
+			expected: githelpers.Mutating,
+			reason:   "Creates a new branch",
+		},
+		{
+			name:     "checkout switches branch (navigating)",
+			command:  "git checkout existing-branch",
+			expected: githelpers.Navigating,
+			reason:   "Switches to existing branch",
+		},
+
+		// Conditional commands - switch
+		{
+			name:     "switch creates branch (mutating)",
+			command:  "git switch -c new-branch",
+			expected: githelpers.Mutating,
+			reason:   "Creates a new branch",
+		},
+		{
+			name:     "switch to existing branch (navigating)",
+			command:  "git switch existing-branch",
+			expected: githelpers.Navigating,
+			reason:   "Switches to existing branch",
+		},
+
+		// Conditional commands - branch
+		{
+			name:     "branch creates new (mutating)",
+			command:  "git branch new-branch",
+			expected: githelpers.Mutating,
+			reason:   "Creates a new branch",
+		},
+		{
+			name:     "branch lists (read-only)",
+			command:  "git branch",
+			expected: githelpers.ReadOnly,
+			reason:   "Lists branches",
+		},
+		{
+			name:     "branch lists with flag (read-only)",
+			command:  "git branch --list",
+			expected: githelpers.ReadOnly,
+			reason:   "Lists branches",
+		},
+
+		// Conditional commands - undo
+		{
+			name:     "undo command (mutating)",
+			command:  "git undo",
+			expected: githelpers.Mutating,
+			reason:   "Undoes operations",
+		},
+		{
+			name:     "undo log (read-only)",
+			command:  "git undo --log",
+			expected: githelpers.ReadOnly,
+			reason:   "Shows log",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gitCmd, err := githelpers.ParseGitCommand(tt.command)
+			require.NoError(t, err, "Failed to parse command: %s", tt.command)
+			assert.Equal(t, tt.expected, gitCmd.BehaviorType,
+				"Command %q should be %s (%s), but got: %s",
+				tt.command, tt.expected, tt.reason, gitCmd.BehaviorType)
+
+			// Test the helper methods
+			switch tt.expected {
+			case githelpers.Mutating:
+				assert.True(t, gitCmd.IsMutating(), "Command should be mutating")
+				assert.False(t, gitCmd.IsReadOnly(), "Command should not be read-only")
+				assert.False(t, gitCmd.IsNavigating(), "Command should not be navigating")
+				assert.True(t, gitCmd.ShouldBeLogged(), "Command should be logged")
+			case githelpers.Navigating:
+				assert.False(t, gitCmd.IsMutating(), "Command should not be mutating")
+				assert.False(t, gitCmd.IsReadOnly(), "Command should not be read-only")
+				assert.True(t, gitCmd.IsNavigating(), "Command should be navigating")
+				assert.True(t, gitCmd.ShouldBeLogged(), "Command should be logged")
+			case githelpers.ReadOnly:
+				assert.False(t, gitCmd.IsMutating(), "Command should not be mutating")
+				assert.True(t, gitCmd.IsReadOnly(), "Command should be read-only")
+				assert.False(t, gitCmd.IsNavigating(), "Command should not be navigating")
+				assert.False(t, gitCmd.ShouldBeLogged(), "Command should not be logged")
+			case githelpers.UnknownBehavior:
+				fallthrough
+			default:
+				t.Errorf("Unknown behavior type: %v", tt.expected)
 			}
 		})
 	}

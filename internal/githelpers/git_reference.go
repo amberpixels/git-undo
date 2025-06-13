@@ -1,15 +1,14 @@
 package githelpers
 
-// The logic below treats some verbs as always-mutating,
-// and others as "conditional" (e.g. branch, checkout) that only
-// mutate when given a target name.
+// The logic below classifies git commands into different behavior types:
+// - alwaysMutating: commands that always create or modify repository state
+// - alwaysReadOnly: commands that only read information and should not be logged
+// - conditionalBehavior: commands whose behavior depends on their arguments
 
-// alwaysMutating are commands that always change state.
-// Note: list can be later revisited.
+// alwaysMutating are commands that always change state and can be undone with git-undo.
 var alwaysMutating = map[string]struct{}{
 	"add":         {},
 	"am":          {},
-	"archive":     {}, // e.g. archive --format=zip
 	"commit":      {},
 	"fetch":       {}, // writes to .git/FETCH_HEAD
 	"init":        {},
@@ -26,11 +25,32 @@ var alwaysMutating = map[string]struct{}{
 	"worktree":    {}, // add/remove
 	"cherry-pick": {},
 	"clone":       {},
+	"clean":       {},
 }
 
-// conditionalMutating are commands that only mutate if they
-// have a non-flag argument (e.g. "git branch foo" vs "git branch").
-var conditionalMutating = map[string]struct{}{
+// alwaysReadOnly are commands that only read information and should not be logged.
+var alwaysReadOnly = map[string]struct{}{
+	"status":    {},
+	"log":       {},
+	"diff":      {},
+	"show":      {},
+	"blame":     {},
+	"ls-files":  {},
+	"ls-remote": {},
+	"grep":      {},
+	"shortlog":  {},
+	"describe":  {},
+	"rev-parse": {},
+	"cat-file":  {},
+	"help":      {},
+	"reflog":    {},
+	"name-rev":  {},
+	"archive":   {}, // e.g. archive --format=zip (doesn't modify repo)
+}
+
+// conditionalBehavior are commands whose behavior depends on their arguments.
+// These need special logic to determine if they're mutating, navigating, or read-only.
+var conditionalBehavior = map[string]struct{}{
 	"branch":   {},
 	"checkout": {},
 	"restore":  {},
@@ -91,44 +111,5 @@ func buildLookup() map[string]CommandType {
 
 var lookup = buildLookup()
 
-// readOnlyFlags are flags that make a command read-only even if it's in conditionalMutating.
-var readOnlyFlags = map[string]map[string]struct{}{
-	"branch": {
-		"-r":        {},
-		"--remotes": {},
-		"--list":    {},
-		"--all":     {},
-	},
-	"checkout": {
-		// No read-only flags for checkout - all flags are mutating
-	},
-	"tag": {
-		"-l":     {},
-		"--list": {},
-	},
-	"config": {
-		"--get":          {},
-		"--list":         {},
-		"-l":             {}, // short form of --list
-		"--get-all":      {},
-		"--get-regexp":   {},
-		"--get-urlmatch": {},
-	},
-	"undo": {
-		"--log": {},
-	},
-}
-
-// readOnlySubcommands are subcommands that make a command read-only.
-var readOnlySubcommands = map[string]map[string]struct{}{
-	"remote": {
-		"show":    {},
-		"get-url": {},
-		"list":    {},
-	},
-}
-
-// readOnlyRevertedLogic is the list of commands where by default it's mutating but not read-only.
-var readOnlyRevertedLogic = map[string]struct{}{
-	"undo": {},
-}
+// Note: The old readOnlyFlags, readOnlySubcommands, and readOnlyRevertedLogic maps
+// have been replaced by the behavior determination logic in gitcommand.go

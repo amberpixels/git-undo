@@ -34,13 +34,61 @@ func (ct CommandType) String() string {
 	}
 }
 
+// BehaviorType describes how a git command behaves in terms of state changes and logging.
+type BehaviorType int
+
+const (
+	UnknownBehavior BehaviorType = iota
+	// Mutating commands create or modify repository state and can be undone with git-undo.
+	Mutating
+	// Navigating commands move between states without creating/modifying and can be undone with git-back.
+	Navigating
+	// ReadOnly commands just read information and should not be logged.
+	ReadOnly
+)
+
+func (bt BehaviorType) String() string {
+	switch bt {
+	case Mutating:
+		return "mutating"
+	case Navigating:
+		return "navigating"
+	case ReadOnly:
+		return "readonly"
+	case UnknownBehavior:
+		fallthrough
+	default:
+		return "unknown"
+	}
+}
+
 // GitCommand represents a parsed "git …" invocation.
 type GitCommand struct {
-	Name       string      // e.g. "branch"
-	Args       []string    // flags and operands
-	Supported  bool        // was Name in our lookup?
-	Type       CommandType // Porcelain, Plumbing, or Unknown
-	IsReadOnly bool
+	Name         string       // e.g. "branch"
+	Args         []string     // flags and operands
+	Supported    bool         // was Name in our lookup?
+	Type         CommandType  // Porcelain, Plumbing, or Unknown
+	BehaviorType BehaviorType // Mutating, Navigating, or ReadOnly
+}
+
+// IsReadOnly returns true if the command is read-only (for backward compatibility).
+func (c *GitCommand) IsReadOnly() bool {
+	return c.BehaviorType == ReadOnly
+}
+
+// IsMutating returns true if the command mutates repository state.
+func (c *GitCommand) IsMutating() bool {
+	return c.BehaviorType == Mutating
+}
+
+// IsNavigating returns true if the command navigates between states.
+func (c *GitCommand) IsNavigating() bool {
+	return c.BehaviorType == Navigating
+}
+
+// ShouldBeLogged returns true if the command should be logged.
+func (c *GitCommand) ShouldBeLogged() bool {
+	return c.BehaviorType == Mutating || c.BehaviorType == Navigating
 }
 
 // ParseGitCommand parses a git command string into a GitCommand struct.
@@ -60,22 +108,24 @@ func ParseGitCommand(raw string) (*GitCommand, error) {
 	if name == "undo" {
 		if slices.Contains(args, "--hook") {
 			return &GitCommand{
-				Name:       name,
-				Args:       args,
-				Supported:  false,
-				Type:       Custom,
-				IsReadOnly: false,
+				Name:         name,
+				Args:         args,
+				Supported:    false,
+				Type:         Custom,
+				BehaviorType: Mutating,
 			}, nil
 		}
 	}
 
 	typ, ok := lookup[name]
+	behaviorType := determineBehaviorType(name, args)
+
 	return &GitCommand{
-		Name:       name,
-		Args:       args,
-		Supported:  ok,
-		Type:       func() CommandType { return typ }(),
-		IsReadOnly: isReadOnlyCommand(name, args),
+		Name:         name,
+		Args:         args,
+		Supported:    ok,
+		Type:         func() CommandType { return typ }(),
+		BehaviorType: behaviorType,
 	}, nil
 }
 
@@ -105,11 +155,11 @@ func (c *GitCommand) Normalize() (*GitCommand, error) {
 	}
 
 	return &GitCommand{
-		Name:       c.Name,
-		Args:       normalizedArgs,
-		Supported:  c.Supported,
-		Type:       c.Type,
-		IsReadOnly: c.IsReadOnly,
+		Name:         c.Name,
+		Args:         normalizedArgs,
+		Supported:    c.Supported,
+		Type:         c.Type,
+		BehaviorType: c.BehaviorType,
 	}, nil
 }
 
@@ -270,45 +320,209 @@ func (c *GitCommand) NormalizedString() (string, error) {
 	return normalized.String(), nil
 }
 
-// isReadOnlyCommand determines if a git command is read-only based on its name and arguments.
-func isReadOnlyCommand(name string, args []string) bool {
-	// Always mutating commands are never read-only
+// determineBehaviorType determines the behavior type of a git command based on its name and arguments.
+func determineBehaviorType(name string, args []string) BehaviorType {
+	// Always read-only commands
+	if _, readOnly := alwaysReadOnly[name]; readOnly {
+		return ReadOnly
+	}
+
+	// Always mutating commands are never read-only or navigating
 	if _, always := alwaysMutating[name]; always {
-		return false
+		return Mutating
 	}
 
-	// Check if it's a conditional mutating command
-	if _, conditional := conditionalMutating[name]; conditional {
-		// First check if there's a subcommand that makes it read-only
-		if len(args) > 0 {
-			if readOnlySubcmds, hasReadOnlySubcmds := readOnlySubcommands[name]; hasReadOnlySubcmds {
-				if _, isReadOnly := readOnlySubcmds[args[0]]; isReadOnly {
-					return true
-				}
+	// Check if it's a conditional command (behavior depends on arguments)
+	if _, conditional := conditionalBehavior[name]; conditional {
+		return determineConditionalBehavior(name, args)
+	}
+
+	// Default to read-only for unknown commands
+	return ReadOnly
+}
+
+// determineConditionalBehavior determines behavior for commands that depend on their arguments.
+func determineConditionalBehavior(name string, args []string) BehaviorType {
+	switch name {
+	case "checkout":
+		return determineCheckoutBehavior(args)
+	case "switch":
+		return determineSwitchBehavior(args)
+	case "branch":
+		return determineBranchBehavior(args)
+	case "tag":
+		return determineTagBehavior(args)
+	case "remote":
+		return determineRemoteBehavior(args)
+	case "config":
+		return determineConfigBehavior(args)
+	case "undo":
+		return determineUndoBehavior(args)
+	case "restore":
+		// restore is always mutating when it has file arguments
+		for _, arg := range args {
+			if !strings.HasPrefix(arg, "-") {
+				return Mutating
 			}
 		}
+		return ReadOnly
+	default:
+		// For unknown conditional commands, default to read-only
+		return ReadOnly
+	}
+}
 
-		// Check read-only flags
-		if readOnlyFlagsForCmd, hasReadOnlyFlags := readOnlyFlags[name]; hasReadOnlyFlags {
-			for _, arg := range args {
-				if _, isReadOnly := readOnlyFlagsForCmd[arg]; isReadOnly {
-					return true
-				}
-			}
-		}
-
-		// Check for non-flag arguments
-		for _, a := range args {
-			if !strings.HasPrefix(a, "-") {
-				return false
-			}
-		}
-
-		if _, ok := readOnlyRevertedLogic[name]; ok {
-			return false
+// determineCheckoutBehavior determines if a checkout command is mutating, navigating, or read-only.
+func determineCheckoutBehavior(args []string) BehaviorType {
+	// Check for branch creation flags
+	for i, arg := range args {
+		if (arg == "-b" || arg == "--branch") && i+1 < len(args) {
+			// Creates a new branch - mutating
+			return Mutating
 		}
 	}
 
-	// If we get here, it's either not a mutating command or all arguments are flags
-	return true
+	// Check for non-flag arguments (branch names, commit hashes)
+	// Special case: "-" is not a flag, it means "previous branch"
+	for _, arg := range args {
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			// Switching to existing branch/commit - navigating
+			return Navigating
+		}
+	}
+
+	// Only flags, no target - read-only
+	return ReadOnly
+}
+
+// determineSwitchBehavior determines if a switch command is mutating, navigating, or read-only.
+func determineSwitchBehavior(args []string) BehaviorType {
+	// Check for branch creation flags
+	for i, arg := range args {
+		if (arg == "-c" || arg == "--create" || arg == "-C" || arg == "--force-create") && i+1 < len(args) {
+			// Creates a new branch - mutating
+			return Mutating
+		}
+	}
+
+	// Check for non-flag arguments (branch names, commit hashes)
+	// Special case: "-" is not a flag, it means "previous branch"
+	for _, arg := range args {
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			// Switching to existing branch/commit - navigating
+			return Navigating
+		}
+	}
+
+	// Only flags, no target - read-only
+	return ReadOnly
+}
+
+// determineBranchBehavior determines if a branch command is mutating, navigating, or read-only.
+func determineBranchBehavior(args []string) BehaviorType {
+	// Check for read-only flags first
+	for _, arg := range args {
+		//nolint:goconst // We want to check flags as strings
+		if arg == "-r" || arg == "--remotes" || arg == "--list" || arg == "--all" {
+			return ReadOnly
+		}
+	}
+
+	// Check for deletion flags
+	for _, arg := range args {
+		if arg == "-d" || arg == "-D" || arg == "--delete" {
+			return Mutating // Deleting branches is mutating
+		}
+	}
+
+	// Check for non-flag arguments (branch names)
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			// Creating a new branch - mutating
+			return Mutating
+		}
+	}
+
+	// Only flags or no arguments - read-only (lists branches)
+	return ReadOnly
+}
+
+// determineTagBehavior determines if a tag command is mutating, navigating, or read-only.
+func determineTagBehavior(args []string) BehaviorType {
+	// Check for read-only flags
+	for _, arg := range args {
+		if arg == "-l" || arg == "--list" {
+			return ReadOnly
+		}
+	}
+
+	// Check for deletion flags
+	for _, arg := range args {
+		if arg == "-d" || arg == "-D" || arg == "--delete" {
+			return Mutating
+		}
+	}
+
+	// Check for non-flag arguments (tag names)
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			// Creating a new tag - mutating
+			return Mutating
+		}
+	}
+
+	// Only flags or no arguments - read-only (lists tags)
+	return ReadOnly
+}
+
+// determineRemoteBehavior determines if a remote command is mutating, navigating, or read-only.
+func determineRemoteBehavior(args []string) BehaviorType {
+	if len(args) == 0 {
+		return ReadOnly // Lists remotes
+	}
+
+	// Check for read-only subcommands
+	switch args[0] {
+	case "show", "get-url":
+		return ReadOnly
+	case "add", "remove", "set-url", "rename", "prune", "update":
+		return Mutating
+	default:
+		// Unknown subcommand, assume read-only
+		return ReadOnly
+	}
+}
+
+// determineConfigBehavior determines if a config command is mutating, navigating, or read-only.
+func determineConfigBehavior(args []string) BehaviorType {
+	// Check for read-only flags
+	for _, arg := range args {
+		if arg == "--get" || arg == "--list" || arg == "-l" || arg == "--get-all" ||
+			arg == "--get-regexp" || arg == "--get-urlmatch" {
+			return ReadOnly
+		}
+	}
+
+	// If no read-only flags and has arguments, assume mutating (setting config)
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			return Mutating
+		}
+	}
+
+	// Only flags or no arguments - read-only
+	return ReadOnly
+}
+
+// determineUndoBehavior determines if an undo command is mutating, navigating, or read-only.
+func determineUndoBehavior(args []string) BehaviorType {
+	// Check for read-only flags
+	for _, arg := range args {
+		if arg == "--log" {
+			return ReadOnly
+		}
+	}
+
+	// All other undo operations are mutating
+	return Mutating
 }
