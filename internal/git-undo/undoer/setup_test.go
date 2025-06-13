@@ -10,7 +10,7 @@ type MockGitExec struct {
 }
 
 func (m *MockGitExec) GitRun(subCmd string, args ...string) error {
-	mockArgs := []interface{}{subCmd}
+	mockArgs := []any{subCmd}
 	for _, arg := range args {
 		mockArgs = append(mockArgs, arg)
 	}
@@ -18,7 +18,7 @@ func (m *MockGitExec) GitRun(subCmd string, args ...string) error {
 }
 
 func (m *MockGitExec) GitOutput(subCmd string, args ...string) (string, error) {
-	mockArgs := []interface{}{subCmd}
+	mockArgs := []any{subCmd}
 	for _, arg := range args {
 		mockArgs = append(mockArgs, arg)
 	}

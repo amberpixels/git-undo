@@ -27,7 +27,7 @@ func main() {
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
 		version = bi.Main.Version
 	}
-	application := app.NewBack(version, verbose, dryRun)
+	application := app.NewAppGiBack(version, verbose, dryRun)
 
 	if err := application.Run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, redColor+appNameGitBack+" ❌: "+grayColor+err.Error()+resetColor)

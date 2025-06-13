@@ -219,7 +219,7 @@ func (sc *SelfController) runEmbeddedScript(script, name string) error {
 }
 
 // logDebugf writes debug messages to stderr when verbose mode is enabled.
-func (sc *SelfController) logDebugf(format string, args ...interface{}) {
+func (sc *SelfController) logDebugf(format string, args ...any) {
 	if !sc.verbose {
 		return
 	}

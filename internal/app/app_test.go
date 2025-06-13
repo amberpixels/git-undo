@@ -43,7 +43,7 @@ func (s *GitTestSuite) SetupSuite() {
 	s.GitTestSuite.GitUndoHook = autoGitUndoHook
 	s.GitTestSuite.SetupSuite()
 
-	s.app = app.New(testAppVersion, verbose, false)
+	s.app = app.NewAppGitUndo(testAppVersion, verbose, false)
 	app.SetupAppDir(s.app, s.GetRepoDir())
 	app.SetupInternalCall(s.app)
 	s.GitTestSuite.SetApplication(s.app)
@@ -120,7 +120,7 @@ func (s *GitTestSuite) TestUndoAdd() {
 // TestSequentialUndo tests multiple undo operations in sequence.
 func (s *GitTestSuite) TestSequentialUndo() {
 	s.T().Skip("TODO FIX ME ")
-	
+
 	// Create test files
 	file1 := filepath.Join(s.GetRepoDir(), "file1.txt")
 	file2 := filepath.Join(s.GetRepoDir(), "file2.txt")
@@ -365,7 +365,7 @@ func (s *GitTestSuite) TestSelfCommands() {
 	// We'll just test that they don't error out and attempt to call the scripts
 
 	// Create a temporary app without git repo requirement for this test
-	testApp := app.New(testAppVersion, false, false) // not verbose, not dry run
+	testApp := app.NewAppGitUndo(testAppVersion, false, false) // not verbose, not dry run
 
 	// Test self update command - these will actually try to run the real scripts
 	// but should fail on network/permission issues rather than script issues
@@ -394,7 +394,7 @@ func (s *GitTestSuite) TestSelfCommandsParsing() {
 	tmpDir := s.T().TempDir()
 	_ = tmpDir
 	// Create an app pointing to the non-git directory
-	testApp := app.New(testAppVersion, false, false)
+	testApp := app.NewAppGitUndo(testAppVersion, false, false)
 	s.Require().NotNil(testApp)
 
 	// These should attempt to run (and fail on script execution) rather than fail on git repo validation
@@ -456,7 +456,7 @@ func (s *GitTestSuite) TestVersionDetection() {
 	s.T().Skip("Skipping version detection test") // TODO: fix me in future
 
 	// Test with git version available (in actual git repo)
-	gitApp := app.New(testAppVersion, false, false)
+	gitApp := app.NewAppGitUndo(testAppVersion, false, false)
 	s.Require().NotNil(gitApp)
 
 	// Capture stdout to check git version
@@ -481,7 +481,7 @@ func (s *GitTestSuite) TestVersionDetection() {
 
 	// Test with build version only (no git repo)
 	tmpDir := s.T().TempDir()
-	buildApp := app.New(testAppVersion, false, false)
+	buildApp := app.NewAppGitUndo(testAppVersion, false, false)
 	_ = tmpDir
 
 	r, w, err = os.Pipe()
@@ -502,7 +502,7 @@ func (s *GitTestSuite) TestVersionDetection() {
 	s.Contains(buildOutput, "git-undo v2.0.0-build", "Should show build version when no git")
 
 	// Test fallback to unknown
-	unknownApp := app.New(testAppVersion, false, false)
+	unknownApp := app.NewAppGitUndo(testAppVersion, false, false)
 	// Don't set build version
 
 	r, w, err = os.Pipe()

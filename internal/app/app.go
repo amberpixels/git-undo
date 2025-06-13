@@ -48,8 +48,8 @@ func (a *App) IsInternalCall() bool {
 	return ok && val == "1"
 }
 
-// New creates a new App instance.
-func New(version string, verbose, dryRun bool) *App {
+// NewAppGitUndo creates a new App instance.
+func NewAppGitUndo(version string, verbose, dryRun bool) *App {
 	return &App{
 		dir:          ".",
 		buildVersion: version,
@@ -59,15 +59,11 @@ func New(version string, verbose, dryRun bool) *App {
 	}
 }
 
-// NewBack creates a new App instance for git-back.
-func NewBack(version string, verbose, dryRun bool) *App {
-	return &App{
-		dir:          ".",
-		buildVersion: version,
-		verbose:      verbose,
-		dryRun:       dryRun,
-		isBackMode:   true,
-	}
+// NewAppGiBack creates a new App instance for git-back.
+func NewAppGiBack(version string, verbose, dryRun bool) *App {
+	app := NewAppGitUndo(version, verbose, dryRun)
+	app.isBackMode = true
+	return app
 }
 
 // ANSI escape code for gray color.
@@ -104,7 +100,7 @@ func (a *App) isCheckoutOrSwitchCommand(command string) bool {
 }
 
 // logDebugf writes debug messages to stderr when verbose mode is enabled.
-func (a *App) logDebugf(format string, args ...interface{}) {
+func (a *App) logDebugf(format string, args ...any) {
 	if !a.verbose {
 		return
 	}
@@ -113,12 +109,12 @@ func (a *App) logDebugf(format string, args ...interface{}) {
 }
 
 // logWarnf writes error messages to stderr.
-func (a *App) logWarnf(format string, args ...interface{}) {
+func (a *App) logWarnf(format string, args ...any) {
 	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // logInfof writes info messages to stderr.
-func (a *App) logInfof(format string, args ...interface{}) {
+func (a *App) logInfof(format string, args ...any) {
 	_, _ = fmt.Fprintf(os.Stderr, yellowColor+a.getAppName()+" ℹ️: "+grayColor+format+resetColor+"\n", args...)
 }
 
