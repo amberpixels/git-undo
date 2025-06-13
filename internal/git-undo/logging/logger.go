@@ -2,12 +2,16 @@ package logging
 
 import (
 	"bufio"
+	"crypto/sha1" //nolint:gosec // We're fine with this
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
 // Logger manages git command logging operations.
@@ -145,11 +149,173 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 		ref = "unknown"
 	}
 
+	return l.logCommandWithDedup(strGitCommand, ref)
+}
+
+// logCommandWithDedup logs a command while preventing duplicates between shell and git hooks.
+func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
+	// Create a unique identifier for this command + timestamp (within 2 seconds)
+	// This allows us to detect and prevent duplicates between shell and git hooks
+	normalizedTime := time.Now().Truncate(2 * time.Second)
+	cmdIdentifier := l.createCommandIdentifier(strGitCommand, ref, normalizedTime)
+
+	// Check if we already handled this by other hook.
+	isGitHook := l.isGitHookContext()
+
+	if isGitHook && l.wasRecentlyLoggedByShellHook(cmdIdentifier) {
+		return nil
+	}
+	if !isGitHook && l.wasRecentlyLoggedByGitHook(cmdIdentifier) {
+		return nil
+	}
+
+	// Mark:
+	if isGitHook {
+		l.markLoggedByGitHook(cmdIdentifier)
+	} else {
+		l.markLoggedByShellHook(cmdIdentifier)
+	}
+
 	return l.prependLogEntry((&Entry{
 		Timestamp: time.Now(),
 		Ref:       ref,
 		Command:   strGitCommand,
 	}).String())
+}
+
+// createCommandIdentifier creates a short identifier for a command to detect duplicates.
+func (l *Logger) createCommandIdentifier(command, ref string, timestamp time.Time) string {
+	// Normalize the command first to ensure equivalent commands have the same identifier
+	normalizedCmd := l.normalizeGitCommand(command)
+
+	// Create hash of normalized command + ref + truncated timestamp
+	data := fmt.Sprintf("%s|%s|%d", normalizedCmd, ref, timestamp.Unix())
+	hash := sha1.Sum([]byte(data))          //nolint:gosec // We're fine with this
+	return hex.EncodeToString(hash[:])[:12] // Use first 12 characters
+}
+
+// normalizeGitCommand converts git commands to a canonical form for comparison.
+func (l *Logger) normalizeGitCommand(cmd string) string {
+	// Parse the command using the proper GitCommand parser
+	gitCmd, err := githelpers.ParseGitCommand(cmd)
+	if err != nil {
+		// If parsing fails, return original command
+		return cmd
+	}
+
+	// Attempt to normalize the command
+	normalizedStr, err := gitCmd.NormalizedString()
+	if err != nil {
+		// If normalization fails (e.g., command not supported), return original
+		return cmd
+	}
+
+	// NormalizedString() already includes "git" prefix via String() method
+	return normalizedStr
+}
+
+// isGitHookContext detects if we're running in a git hook context
+// We do this by checking the call stack environment rather than relying on order.
+func (l *Logger) isGitHookContext() bool {
+	// Method 1: Check if we're called from the git hook script
+	// Our git hook script sets a special marker
+	if marker := os.Getenv("GIT_UNDO_GIT_HOOK_MARKER"); marker == "1" {
+		return true
+	}
+
+	// Method 2: Heuristic - check if GIT_DIR is set (git hooks usually have this)
+	// This is less reliable but serves as fallback
+	if _, hasGitDir := os.LookupEnv("GIT_DIR"); hasGitDir {
+		// Additionally check that we're not in shell hook context
+		if os.Getenv("GIT_UNDO_INTERNAL_HOOK") == "1" {
+			// This could be either shell or git hook, need to differentiate
+			// Check if common git hook environment variables are set
+			hookName := os.Getenv("GIT_HOOK_NAME")
+			return hookName != ""
+		}
+	}
+
+	return false
+}
+
+// wasRecentlyLoggedByShellHook checks if this command was recently logged by shell hook.
+func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
+	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+
+	// Check if flag file exists and is recent (within last 10 seconds)
+	if stat, err := os.Stat(flagFile); err == nil {
+		age := time.Since(stat.ModTime())
+		if age < 10*time.Second {
+			return true
+		}
+		// Clean up old flag file
+		_ = os.Remove(flagFile)
+	}
+
+	return false
+}
+
+// markLoggedByShellHook marks that this command was logged by shell hook.
+func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
+	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+
+	// Create flag file
+	if file, err := os.Create(flagFile); err == nil {
+		_ = file.Close()
+	}
+
+	// Clean up old flag files in background (best effort)
+	go l.cleanupOldFlagFiles()
+}
+
+// cleanupOldFlagFiles removes flag files older than 30 seconds.
+func (l *Logger) cleanupOldFlagFiles() {
+	entries, err := os.ReadDir(l.logDir)
+	if err != nil {
+		return
+	}
+
+	cutoff := time.Now().Add(-30 * time.Second)
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), ".shell-hook-") && !strings.HasPrefix(entry.Name(), ".git-hook-") {
+			continue
+		}
+
+		filePath := filepath.Join(l.logDir, entry.Name())
+		if stat, err := os.Stat(filePath); err == nil && stat.ModTime().Before(cutoff) {
+			_ = os.Remove(filePath)
+		}
+	}
+}
+
+// wasRecentlyLoggedByGitHook checks if this command was recently logged by git hook.
+func (l *Logger) wasRecentlyLoggedByGitHook(cmdIdentifier string) bool {
+	flagFile := filepath.Join(l.logDir, ".git-hook-"+cmdIdentifier)
+
+	// Check if flag file exists and is recent (within last 10 seconds)
+	if stat, err := os.Stat(flagFile); err == nil {
+		age := time.Since(stat.ModTime())
+		if age < 10*time.Second {
+			return true
+		}
+		// Clean up old flag file
+		_ = os.Remove(flagFile)
+	}
+
+	return false
+}
+
+// markLoggedByGitHook marks that this command was logged by git hook.
+func (l *Logger) markLoggedByGitHook(cmdIdentifier string) {
+	flagFile := filepath.Join(l.logDir, ".git-hook-"+cmdIdentifier)
+
+	// Create flag file
+	if file, err := os.Create(flagFile); err == nil {
+		_ = file.Close()
+	}
+
+	// Clean up old flag files in background (best effort)
+	go l.cleanupOldFlagFiles()
 }
 
 // GetLogPath returns the path to the log file.
@@ -278,6 +444,72 @@ func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
 	}
 
 	return foundEntry, nil
+}
+
+// GetLastCheckoutSwitchEntry returns the last checkout or switch command entry
+// for the given ref (or current ref if not specified).
+func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...string) (*Entry, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	// Determine which reference to use
+	var ref string
+	switch len(refArg) {
+	case 0:
+		// No ref provided, use current ref
+		currentRef, err := l.git.GetCurrentGitRef()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current ref: %w", err)
+		}
+		ref = currentRef
+	default:
+		ref = refArg[0]
+	}
+
+	var foundEntry *Entry
+	err := l.processLogFile(func(line string) bool {
+		// skip undoed
+		if strings.HasPrefix(line, "#") {
+			return true
+		}
+
+		// Parse the log line into an Entry
+		entry, err := parseLogLine(line)
+		if err != nil { // TODO: warnings maybe?
+			return true
+		}
+
+		// Check reference if specified and not "any"
+		if ref != "" && entry.Ref != ref {
+			return true
+		}
+
+		// Check if this is a checkout or switch command
+		if !isCheckoutOrSwitchCommand(entry.Command) {
+			return true
+		}
+
+		// Found a matching entry!
+		foundEntry = entry
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return foundEntry, nil
+}
+
+// isCheckoutOrSwitchCommand checks if a command is a git checkout or git switch command.
+func isCheckoutOrSwitchCommand(command string) bool {
+	// Parse the command to check its type
+	gitCmd, err := githelpers.ParseGitCommand(command)
+	if err != nil {
+		return false
+	}
+
+	return gitCmd.Name == "checkout" || gitCmd.Name == "switch"
 }
 
 // Dump reads the log file content and writes it directly to the provided writer.

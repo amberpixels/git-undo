@@ -71,12 +71,12 @@ func (d *CommandDetails) getFirstNonFlagArg() string {
 
 // parseGitCommand parses a git command string into a CommandDetails struct.
 func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
-	parsed := githelpers.ParseGitCommand(gitCmdStr)
-	if parsed.ValidationErr != nil {
-		return nil, fmt.Errorf("failed to parse input git command: %w", parsed.ValidationErr)
+	parsed, err := githelpers.ParseGitCommand(gitCmdStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse input git command: %w", err)
 	}
-	if !parsed.Valid {
-		return nil, fmt.Errorf("invalid git command format: %s", gitCmdStr)
+	if !parsed.Supported {
+		return nil, fmt.Errorf("unsupported git command format: %s", gitCmdStr)
 	}
 
 	return &CommandDetails{
@@ -116,10 +116,43 @@ func New(cmdStr string, gitExec GitExec) Undoer {
 		return &BranchUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "checkout":
 		return &CheckoutUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "switch":
+		return &SwitchUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "stash":
 		return &StashUndoer{originalCmd: cmdDetails, git: gitExec}
 	case "merge":
 		return &MergeUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "rm":
+		return &RmUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "mv":
+		return &MvUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "tag":
+		return &TagUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "restore":
+		return &RestoreUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "reset":
+		return &ResetUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "revert":
+		return &RevertUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "cherry-pick":
+		return &CherryPickUndoer{originalCmd: cmdDetails, git: gitExec}
+	case "clean":
+		return &CleanUndoer{originalCmd: cmdDetails, git: gitExec}
+	default:
+		return &InvalidUndoer{rawCommand: cmdStr}
+	}
+}
+
+// NewBack returns the appropriate Undoer implementation for git-back (checkout/switch undo).
+func NewBack(cmdStr string, gitExec GitExec) Undoer {
+	cmdDetails, err := parseGitCommand(cmdStr)
+	if err != nil {
+		return &InvalidUndoer{rawCommand: cmdStr, parseError: err}
+	}
+
+	switch cmdDetails.SubCommand {
+	case "checkout", "switch":
+		return &BackUndoer{originalCmd: cmdDetails, git: gitExec}
 	default:
 		return &InvalidUndoer{rawCommand: cmdStr}
 	}

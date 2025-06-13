@@ -27,10 +27,10 @@ func main() {
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
 		version = bi.Main.Version
 	}
-	application := app.New(version, verbose, dryRun)
+	application := app.NewBack(version, verbose, dryRun)
 
 	if err := application.Run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, redColor+appNameGitUndo+" ❌: "+grayColor+err.Error()+resetColor)
+		_, _ = fmt.Fprintln(os.Stderr, redColor+appNameGitBack+" ❌: "+grayColor+err.Error()+resetColor)
 		os.Exit(1)
 	}
 }
@@ -40,5 +40,5 @@ const (
 	redColor   = "\033[31m"
 	resetColor = "\033[0m"
 
-	appNameGitUndo = "git-undo"
+	appNameGitBack = "git-back"
 )

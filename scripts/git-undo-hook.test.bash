@@ -9,7 +9,8 @@ store_git_command() {
 
   # Check if the command is an alias and expand it
   if alias "$head" &>/dev/null; then
-    local def=$(alias "$head")
+    local def
+    def=$(alias "$head")
     # Extract the expansion from alias output (format: alias name='expansion')
     local expansion=${def#*\'}
     expansion=${expansion%\'}

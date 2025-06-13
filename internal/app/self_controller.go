@@ -32,16 +32,18 @@ var allowedSelfCommands = []string{
 type SelfController struct {
 	buildVersion string
 	verbose      bool
+	appName      string
 
 	// scripts is a map of self-management commands to their scripts.
 	scripts map[string]string
 }
 
 // NewSelfController creates a new SelfController instance.
-func NewSelfController(buildVersion string, verbose bool) *SelfController {
+func NewSelfController(buildVersion string, verbose bool, appName string) *SelfController {
 	return &SelfController{
 		buildVersion: buildVersion,
 		verbose:      verbose,
+		appName:      appName,
 		scripts:      map[string]string{},
 	}
 }
@@ -65,8 +67,22 @@ func (sc *SelfController) HandleSelfCommand(args []string) error {
 
 	switch selfCommand {
 	case CommandUpdate:
+		if sc.appName == appNameGitBack {
+			return fmt.Errorf(
+				"%s does not support update command. Use %s self update instead",
+				appNameGitBack,
+				appNameGitUndo,
+			)
+		}
 		return sc.cmdSelfUpdate()
 	case CommandUninstall:
+		if sc.appName == appNameGitBack {
+			return fmt.Errorf(
+				"%s does not support uninstall command. Use %s self uninstall instead",
+				appNameGitBack,
+				appNameGitUndo,
+			)
+		}
 		return sc.cmdSelfUninstall()
 	case CommandVersion:
 		return sc.cmdVersion()
@@ -113,14 +129,27 @@ func (sc *SelfController) cmdVersion() error {
 
 // cmdHelp displays the help information.
 func (sc *SelfController) cmdHelp() error {
-	// TODO use script so help is always up to date
-	fmt.Fprintf(os.Stdout, "git-undo %s\n", sc.buildVersion)
-	fmt.Fprintf(os.Stdout, "Usage: git-undo [command]\n")
+	if sc.appName == appNameGitBack {
+		fmt.Fprintf(os.Stdout, "%s %s\n", appNameGitBack, sc.buildVersion)
+		fmt.Fprintf(os.Stdout, "Usage: %s\n", appNameGitBack)
+		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(os.Stdout, "Git-back undoes the last git checkout or git switch command,\n")
+		fmt.Fprintf(os.Stdout, "returning you to the previous branch or commit.\n")
+		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(os.Stdout, "Commands:\n")
+		fmt.Fprintf(os.Stdout, "  version   Display %s version\n", appNameGitBack)
+		fmt.Fprintf(os.Stdout, "  help      Display this help\n")
+		return nil
+	}
+
+	// Default git-undo help
+	fmt.Fprintf(os.Stdout, "%s %s\n", appNameGitUndo, sc.buildVersion)
+	fmt.Fprintf(os.Stdout, "Usage: %s [command]\n", appNameGitUndo)
 	fmt.Fprintf(os.Stdout, "\n")
 	fmt.Fprintf(os.Stdout, "Commands:\n")
-	fmt.Fprintf(os.Stdout, "  update    Update git-undo to the latest version\n")
-	fmt.Fprintf(os.Stdout, "  uninstall Uninstall git-undo\n")
-	fmt.Fprintf(os.Stdout, "  version   Display git-undo version\n")
+	fmt.Fprintf(os.Stdout, "  update    Update %s to the latest version\n", appNameGitUndo)
+	fmt.Fprintf(os.Stdout, "  uninstall Uninstall %s\n", appNameGitUndo)
+	fmt.Fprintf(os.Stdout, "  version   Display %s version\n", appNameGitUndo)
 	fmt.Fprintf(os.Stdout, "  help      Display this help\n")
 	return nil
 }
@@ -154,7 +183,7 @@ func (sc *SelfController) runEmbeddedScript(script, name string) error {
 	}
 
 	// Create temp file with proper extension
-	tmpFile, err := os.CreateTemp("", fmt.Sprintf("git-undo-%s-*.sh", name))
+	tmpFile, err := os.CreateTemp("", fmt.Sprintf("%s-%s-*.sh", appNameGitUndo, name))
 	if err != nil {
 		return fmt.Errorf("failed to create temp script: %w", err)
 	}
@@ -195,5 +224,5 @@ func (sc *SelfController) logDebugf(format string, args ...interface{}) {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, yellowColor+"git-undo ⚙️: "+grayColor+format+resetColor+"\n", args...)
+	fmt.Fprintf(os.Stderr, yellowColor+sc.appName+" ⚙️: "+grayColor+format+resetColor+"\n", args...)
 }
