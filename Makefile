@@ -17,7 +17,7 @@ INSTALL_DIR := $(shell go env GOPATH)/bin
 # pseudo_version will return the same format as the Go does.
 VERSION  := $(shell ./scripts/src/pseudo_version.sh 2>/dev/null || echo "")
 
-# Only add the flag when VERSION isn’t empty
+# Only add the flag when VERSION isn't empty
 LDFLAGS  := $(if $(strip $(VERSION)),-X "main.version=$(VERSION)")
 
 # Default target
@@ -106,13 +106,13 @@ binary-install: binary-install-undo binary-install-back
 .PHONY: binary-install-undo
 binary-install-undo:
 	@echo "Installing git-undo with version: $(VERSION)"
-	@go install -ldflags "-X main.version=$(VERSION)" $(CMD_UNDO_DIR)
+	@go install -ldflags "$(LDFLAGS)" $(CMD_UNDO_DIR)
 
 # Install git-back binary globally
 .PHONY: binary-install-back
 binary-install-back:
 	@echo "Installing git-back with version: $(VERSION)"
-	@go install -ldflags "-X main.version=$(VERSION)" $(CMD_BACK_DIR)
+	@go install -ldflags "$(LDFLAGS)" $(CMD_BACK_DIR)
 
 # Install with support for verbose flag
 .PHONY: install

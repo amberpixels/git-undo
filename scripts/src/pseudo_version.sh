@@ -2,7 +2,7 @@
 set -euo pipefail
 
 pseudo_version() {
-    local tag ts hash dirty base major minor patch next
+    local tag ts hash dirty="" base major minor patch next
 
     # 1. last semver tag (falls back to v0.0.0)
     tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo v0.0.0)
