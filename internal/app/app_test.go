@@ -174,12 +174,12 @@ func (s *GitTestSuite) TestUndoLog() {
 
 	// Perform some git operations to generate log entries
 	s.Git("add", filepath.Base(testFile)) // Use relative path for git commands
-	s.Git("commit", "-m", "'First commit'")
+	s.Git("commit", "-m", "First commit")
 
 	// Check that log command works and shows output
 	log := s.gitUndoLog()
 	s.NotEmpty(log, "Log should not be empty")
-	s.Contains(log, "git commit -m \"'First commit'", "Log should contain commit command")
+	s.Contains(log, "git commit -m \"First commit\"", "Log should contain commit command")
 	s.Contains(log, "git add test.txt", "Log should contain add command")
 	s.Contains(log, "|feature-branch|", "Log should contain branch name")
 
