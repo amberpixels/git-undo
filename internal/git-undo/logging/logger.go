@@ -386,7 +386,7 @@ func (l *Logger) GetLastRegularEntry(refArg ...Ref) (*Entry, error) {
 
 		// Parse the log line into an Entry
 		entry, err := parseLogLine(line)
-		if err != nil { // TODO: warnings maybe?
+		if err != nil { // TODO: Logger.lgr should display warnings in Verbose mode here
 			return true
 		}
 
@@ -495,22 +495,11 @@ func (l *Logger) Dump(w io.Writer) error {
 		return fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	// Check if file exists
-	_, err := os.Stat(l.logFile)
-	if os.IsNotExist(err) {
-		// File doesn't exist, create an empty one
-		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
-			return fmt.Errorf("failed to create log file: %w", err)
-		}
-		// Nothing to dump (file is empty)
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to check log file status: %w", err)
-	}
-
-	// Open the file for reading
-	file, err := os.Open(l.logFile)
+	file, err := l.getFile()
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // nothing to dump (file is empty)
+		}
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 	defer func() { _ = file.Close() }()
@@ -543,19 +532,17 @@ func (l *Logger) prependLogEntry(entry string) error {
 		return fmt.Errorf("failed to write log entry: %w", err)
 	}
 
-	// Stream original file into the tmp file
-	in, err := os.Open(l.logFile)
-	switch {
-	case err == nil:
-		defer func() { _ = in.Close() }()
-
+	in, err := l.getFile()
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	// if file exists, stream original file into the tmp file
+	if in != nil {
+		// Stream original file into the tmp file
 		if _, err := io.Copy(out, in); err != nil {
 			return fmt.Errorf("failed to copy existing log content: %w", err)
 		}
-	case os.IsNotExist(err):
-		// if os.Open failed because file doesn't exist, we just skip it
-	default:
-		return fmt.Errorf("failed to open log file: %w", err)
+		defer func() { _ = in.Close() }()
 	}
 
 	// Swap via rename: will remove logFile and make tmpFile our logFile
@@ -604,22 +591,12 @@ func (l *Logger) processLogFile(processor lineProcessor) error {
 	}
 
 	// Check if the file exists
-	_, err := os.Stat(l.logFile)
-	if os.IsNotExist(err) {
-		// Create the file if it doesn't exist
-		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
-			return fmt.Errorf("failed to create log file: %w", err)
-		}
-
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to check log file status: %w", err)
-	}
-
-	// Open the file for reading
-	file, err := os.Open(l.logFile)
+	file, err := l.getFile()
 	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
+		if os.IsNotExist(err) {
+			return nil // will log error OR nil if file doesn't exist
+		}
+		return err
 	}
 	defer file.Close()
 
@@ -645,6 +622,28 @@ func (l *Logger) processLogFile(processor lineProcessor) error {
 	}
 
 	return nil
+}
+
+// getFile returns the os.File for the log file.
+// It opens it for reading. If file doesn't exist it creates it (but still returns os.ErrNotExist).
+// User is responsible for closing the file.
+func (l *Logger) getFile() (*os.File, error) {
+	// Check if the file exists
+	_, err := os.Stat(l.logFile)
+	if os.IsNotExist(err) {
+		// Create the file if it doesn't exist
+		// TODO: should we stick to os.Create() instead?
+		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
+			return nil, fmt.Errorf("failed to create log file: %w", err)
+		}
+
+		return nil, err
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to check log file status: %w", err)
+	}
+
+	// Open the file for reading or writing
+	return os.OpenFile(l.logFile, os.O_RDONLY, 0600)
 }
 
 // parseLogLine parses a log line into an Entry.
