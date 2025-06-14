@@ -201,14 +201,27 @@ func (a *App) Run(args []string) (err error) {
 	// Get the last git command
 	var lastEntry *logging.Entry
 	if a.isBackMode {
-		// For git-back, only look for checkout/switch commands
-		lastEntry, err = lgr.GetLastCheckoutSwitchEntry()
+		// For git-back, look for the last checkout/switch command (including undoed ones for toggle behavior)
+		// We pass "any" to look across all refs, not just the current one
+		lastEntry, err = lgr.GetLastEntry("any")
 		if err != nil {
-			return fmt.Errorf("failed to get last checkout/switch command: %w", err)
+			return fmt.Errorf("failed to get last command: %w", err)
 		}
 		if lastEntry == nil {
-			a.logDebugf("no checkout/switch commands to undo")
+			a.logDebugf("no commands found")
 			return nil
+		}
+		// Check if the last command was a checkout or switch command
+		if !a.isCheckoutOrSwitchCommand(lastEntry.Command) {
+			// If not, try to find the last checkout/switch command
+			lastEntry, err = lgr.GetLastCheckoutSwitchEntry("any")
+			if err != nil {
+				return fmt.Errorf("failed to get last checkout/switch command: %w", err)
+			}
+			if lastEntry == nil {
+				a.logDebugf("no checkout/switch commands to undo")
+				return nil
+			}
 		}
 	} else {
 		// For git-undo, get any regular entry

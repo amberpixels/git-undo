@@ -386,7 +386,7 @@ func (l *Logger) GetLastRegularEntry(refArg ...string) (*Entry, error) {
 		}
 
 		// Check reference if specified and not "any"
-		if ref != "" && entry.Ref != ref {
+		if ref != "" && ref != "any" && entry.Ref != ref {
 			return true
 		}
 
@@ -431,7 +431,7 @@ func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
 		}
 
 		// Check reference if specified and not "any"
-		if ref != "" && entry.Ref != ref {
+		if ref != "" && ref != "any" && entry.Ref != ref {
 			return true
 		}
 
@@ -481,7 +481,7 @@ func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...string) (*Entry, error) {
 		}
 
 		// Check reference if specified and not "any"
-		if ref != "" && entry.Ref != ref {
+		if ref != "" && ref != "any" && entry.Ref != ref {
 			return true
 		}
 
