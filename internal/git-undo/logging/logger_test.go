@@ -28,7 +28,7 @@ func (m *MockGitRefSwitcher) SwitchRef(ref string) {
 
 func NewMockGitHelper() *MockGitRefSwitcher {
 	return &MockGitRefSwitcher{
-		currentRef: "main",
+		currentRef: logging.RefMain.String(),
 	}
 }
 
@@ -87,7 +87,7 @@ func TestLogger_E2E(t *testing.T) {
 	entry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
 	assert.Equal(t, commands[4].cmd, entry.Command)
-	assert.Equal(t, "feature/test", entry.Ref)
+	assert.Equal(t, "feature/test", entry.Ref.String())
 
 	// 3. Toggle the latest entry as undoed
 	t.Log("Toggling latest entry as undoed...")
@@ -106,12 +106,12 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 6. Switch to main branch and get its latest entry
 	t.Log("Getting latest entry from main branch...")
-	SwitchRef(mgc, "main")
+	SwitchRef(mgc, logging.RefMain.String())
 
 	mainEntry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
 	assert.Equal(t, commands[1].cmd, mainEntry.Command)
-	assert.Equal(t, "main", mainEntry.Ref)
+	assert.Equal(t, logging.RefMain, mainEntry.Ref)
 
 	// 7. Test entry parsing
 	t.Log("Testing entry parsing...")

@@ -53,12 +53,30 @@ func (et EntryType) String() string {
 	return [...]string{"", "regular", "undoed"}[et]
 }
 
+type Ref string
+
+const (
+	// RefAny means when the ref (branch/tag/commit) of the line is not respected (any).
+	RefAny Ref = "__ANY__"
+
+	// RefCurrent means when the ref (branch/tag/commit) is the current one.
+	RefCurrent Ref = "__CURRENT__"
+
+	// RefUnknown means when the ref couldn't be determined. (Non-happy path).
+	RefUnknown Ref = "__UNKNOWN__"
+
+	// RefMain represents the main branch (used for convenience).
+	RefMain Ref = "main"
+)
+
+func (r Ref) String() string { return string(r) }
+
 // Entry represents a logged git command with its full identifier.
 type Entry struct {
 	// Timestamp is parsed timestamp of the entry.
 	Timestamp time.Time
 	// Ref is reference (branch/tag/commit) where the command was executed.
-	Ref string
+	Ref Ref
 	// Command is just the command part.
 	Command string
 
@@ -106,7 +124,7 @@ func (e *Entry) UnmarshalText(data []byte) error {
 		return fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
-	e.Ref = parts[1]
+	e.Ref = Ref(parts[1])
 	e.Command = parts[2]
 
 	return nil
@@ -143,17 +161,17 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	}
 
 	// Get current ref (branch/tag/commit)
-	ref, err := l.git.GetCurrentGitRef()
-	if err != nil {
-		// If we can't get the ref, just use "unknown"
-		ref = "unknown"
+	var ref = RefUnknown
+	refStr, err := l.git.GetCurrentGitRef()
+	if err == nil {
+		ref = Ref(refStr)
 	}
 
 	return l.logCommandWithDedup(strGitCommand, ref)
 }
 
 // logCommandWithDedup logs a command while preventing duplicates between shell and git hooks.
-func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
+func (l *Logger) logCommandWithDedup(strGitCommand string, ref Ref) error {
 	// Create a unique identifier for this command + timestamp (within 2 seconds)
 	// This allows us to detect and prevent duplicates between shell and git hooks
 	normalizedTime := time.Now().Truncate(2 * time.Second)
@@ -184,7 +202,7 @@ func (l *Logger) logCommandWithDedup(strGitCommand, ref string) error {
 }
 
 // createCommandIdentifier creates a short identifier for a command to detect duplicates.
-func (l *Logger) createCommandIdentifier(command, ref string, timestamp time.Time) string {
+func (l *Logger) createCommandIdentifier(command string, ref Ref, timestamp time.Time) string {
 	// Normalize the command first to ensure equivalent commands have the same identifier
 	normalizedCmd := l.normalizeGitCommand(command)
 
@@ -353,24 +371,11 @@ func (l *Logger) ToggleEntry(entryIdentifier string) error {
 
 // GetLastRegularEntry returns last regular entry (ignoring undoed ones)
 // for the given ref (or current ref if not specified).
-func (l *Logger) GetLastRegularEntry(refArg ...string) (*Entry, error) {
+func (l *Logger) GetLastRegularEntry(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
 	}
-
-	// Determine which reference to use
-	var ref string
-	switch len(refArg) {
-	case 0:
-		// No ref provided, use current ref
-		currentRef, err := l.git.GetCurrentGitRef()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current ref: %w", err)
-		}
-		ref = currentRef
-	default:
-		ref = refArg[0]
-	}
+	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
 	err := l.processLogFile(func(line string) bool {
@@ -385,8 +390,7 @@ func (l *Logger) GetLastRegularEntry(refArg ...string) (*Entry, error) {
 			return true
 		}
 
-		// Check reference if specified and not "any"
-		if ref != "" && ref != "any" && entry.Ref != ref {
+		if !l.matchRef(entry.Ref, ref) {
 			return true
 		}
 
@@ -403,24 +407,12 @@ func (l *Logger) GetLastRegularEntry(refArg ...string) (*Entry, error) {
 
 // GetLastEntry returns last entry for the given ref (or current ref if not specified)
 // regarding of the entry type (undoed or regular).
-func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
+func (l *Logger) GetLastEntry(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	// Determine which reference to use
-	var ref string
-	switch len(refArg) {
-	case 0:
-		// No ref provided, use current ref
-		currentRef, err := l.git.GetCurrentGitRef()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current ref: %w", err)
-		}
-		ref = currentRef
-	default:
-		ref = refArg[0]
-	}
+	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
 	err := l.processLogFile(func(line string) bool {
@@ -430,8 +422,7 @@ func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
 			return true
 		}
 
-		// Check reference if specified and not "any"
-		if ref != "" && ref != "any" && entry.Ref != ref {
+		if !l.matchRef(entry.Ref, ref) {
 			return true
 		}
 
@@ -448,24 +439,12 @@ func (l *Logger) GetLastEntry(refArg ...string) (*Entry, error) {
 
 // GetLastCheckoutSwitchEntry returns the last checkout or switch command entry
 // for the given ref (or current ref if not specified).
-func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...string) (*Entry, error) {
+func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	// Determine which reference to use
-	var ref string
-	switch len(refArg) {
-	case 0:
-		// No ref provided, use current ref
-		currentRef, err := l.git.GetCurrentGitRef()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current ref: %w", err)
-		}
-		ref = currentRef
-	default:
-		ref = refArg[0]
-	}
+	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
 	err := l.processLogFile(func(line string) bool {
@@ -479,9 +458,7 @@ func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...string) (*Entry, error) {
 		if err != nil { // TODO: warnings maybe?
 			return true
 		}
-
-		// Check reference if specified and not "any"
-		if ref != "" && ref != "any" && entry.Ref != ref {
+		if !l.matchRef(entry.Ref, ref) {
 			return true
 		}
 
@@ -539,8 +516,7 @@ func (l *Logger) Dump(w io.Writer) error {
 	defer func() { _ = file.Close() }()
 
 	// Copy directly from file to writer
-	_, err = io.Copy(w, file)
-	if err != nil {
+	if _, err = io.Copy(w, file); err != nil {
 		return fmt.Errorf("failed to dump log file: %w", err)
 	}
 
@@ -588,6 +564,35 @@ func (l *Logger) prependLogEntry(entry string) error {
 	}
 
 	return nil
+}
+
+// resolveRef resolves the ref argument to a Ref.
+func (l *Logger) resolveRef(refArg ...Ref) Ref {
+	if len(refArg) == 0 || refArg[0] == RefCurrent {
+		// No ref provided, use current ref
+		currentRef, err := l.git.GetCurrentGitRef()
+		if err != nil {
+			return RefAny
+		}
+		return Ref(currentRef)
+	}
+
+	return refArg[0]
+}
+
+// matchRef checks if a line ref matches a target ref.
+func (l *Logger) matchRef(lineRef, targetRef Ref) bool {
+	if targetRef == RefAny {
+		return true
+	}
+	if targetRef == RefCurrent {
+		panic("matchRef MUST be called after RefCurrent is resolved")
+	}
+	if targetRef == RefUnknown {
+		panic("matchRef MUST be not be called with RefUnknown")
+	}
+
+	return lineRef == targetRef
 }
 
 // processLogFile reads the log file line by line and calls the processor function for each line.
