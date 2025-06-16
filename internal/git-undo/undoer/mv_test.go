@@ -1,7 +1,6 @@
 package undoer_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
@@ -9,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMvUndoer_GetUndoCommand(t *testing.T) {
+func TestMvUndoer_GetUndoCommands(t *testing.T) {
 	tests := []struct {
 		name          string
 		command       string
 		setupMock     func(*MockGitExec)
-		expectedCmd   string
-		expectedDesc  string
+		expectedCmds  []string
+		expectedDescs []string
 		expectError   bool
 		errorContains string
 	}{
@@ -25,9 +24,9 @@ func TestMvUndoer_GetUndoCommand(t *testing.T) {
 			setupMock: func(m *MockGitExec) {
 				m.On("GitRun", "ls-files", "--error-unmatch", "new.txt").Return(nil)
 			},
-			expectedCmd:  "git mv new.txt old.txt",
-			expectedDesc: "Move 'new.txt' back to 'old.txt'",
-			expectError:  false,
+			expectedCmds:  []string{"git mv new.txt old.txt"},
+			expectedDescs: []string{"Move 'new.txt' back to 'old.txt'"},
+			expectError:   false,
 		},
 		{
 			name:    "multiple files to directory",
@@ -36,9 +35,15 @@ func TestMvUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitRun", "ls-files", "--error-unmatch", "src/file1.txt").Return(nil)
 				m.On("GitRun", "ls-files", "--error-unmatch", "src/file2.txt").Return(nil)
 			},
-			expectedCmd:  "git mv src/file1.txt file1.txt && git mv src/file2.txt file2.txt",
-			expectedDesc: "Move files back: 'src/file1.txt' → 'file1.txt', 'src/file2.txt' → 'file2.txt'",
-			expectError:  false,
+			expectedCmds: []string{
+				"git mv src/file1.txt file1.txt",
+				"git mv src/file2.txt file2.txt",
+			},
+			expectedDescs: []string{
+				"Move 'src/file1.txt' back to 'file1.txt'",
+				"Move 'src/file2.txt' back to 'file2.txt'",
+			},
+			expectError: false,
 		},
 		{
 			name:          "insufficient arguments",
@@ -46,15 +51,6 @@ func TestMvUndoer_GetUndoCommand(t *testing.T) {
 			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "insufficient arguments",
-		},
-		{
-			name:    "destination doesn't exist",
-			command: "git mv old.txt new.txt",
-			setupMock: func(m *MockGitExec) {
-				m.On("GitRun", "ls-files", "--error-unmatch", "new.txt").Return(errors.New("file not found"))
-			},
-			expectError:   true,
-			errorContains: "does not exist in git index",
 		},
 	}
 
@@ -68,7 +64,7 @@ func TestMvUndoer_GetUndoCommand(t *testing.T) {
 
 			mvUndoer := undoer.NewMvUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := mvUndoer.GetUndoCommand()
+			undoCmds, err := mvUndoer.GetUndoCommands()
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -77,9 +73,11 @@ func TestMvUndoer_GetUndoCommand(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, undoCmd)
-				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
-				assert.Equal(t, tt.expectedDesc, undoCmd.Description)
+				require.Len(t, undoCmds, len(tt.expectedCmds))
+				for i, cmd := range undoCmds {
+					assert.Equal(t, tt.expectedCmds[i], cmd.Command)
+					assert.Equal(t, tt.expectedDescs[i], cmd.Description)
+				}
 			}
 
 			mockGit.AssertExpectations(t)

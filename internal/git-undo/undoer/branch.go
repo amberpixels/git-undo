@@ -11,8 +11,8 @@ type BranchUndoer struct {
 	originalCmd *CommandDetails
 }
 
-// GetUndoCommand returns the command that would undo the branch creation.
-func (b *BranchUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the branch creation.
+func (b *BranchUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if this was a branch deletion operation
 	for _, arg := range b.originalCmd.Args {
 		if arg == "-d" || arg == "-D" || arg == "--delete" {
@@ -25,8 +25,8 @@ func (b *BranchUndoer) GetUndoCommand() (*UndoCommand, error) {
 		return nil, fmt.Errorf("no branch name found in command: %s", b.originalCmd.FullCommand)
 	}
 
-	return NewUndoCommand(b.git,
+	return []*UndoCommand{NewUndoCommand(b.git,
 		fmt.Sprintf("git branch -D %s", branchName),
 		fmt.Sprintf("Delete branch '%s'", branchName),
-	), nil
+	)}, nil
 }

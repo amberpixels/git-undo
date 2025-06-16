@@ -12,8 +12,23 @@ type BackUndoer struct {
 	originalCmd *CommandDetails
 }
 
-// GetUndoCommand returns the command that would undo the checkout/switch operation.
-func (b *BackUndoer) GetUndoCommand() (*UndoCommand, error) {
+// NewBack returns the appropriate Undoer implementation for git-back (checkout/switch undo).
+func NewBack(cmdStr string, gitExec GitExec) Undoer {
+	cmdDetails, err := parseGitCommand(cmdStr)
+	if err != nil {
+		return &InvalidUndoer{rawCommand: cmdStr, parseError: err}
+	}
+
+	switch cmdDetails.SubCommand {
+	case "checkout", "switch":
+		return &BackUndoer{originalCmd: cmdDetails, git: gitExec}
+	default:
+		return &InvalidUndoer{rawCommand: cmdStr}
+	}
+}
+
+// GetUndoCommands returns the commands that would undo the checkout/switch operation.
+func (b *BackUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// For git-back, we want to go back to the previous branch
 	// We can use "git checkout -" which switches to the previous branch
 
@@ -33,7 +48,7 @@ func (b *BackUndoer) GetUndoCommand() (*UndoCommand, error) {
 	_ = prevBranch // TODO: fixme.. do we need prevBranch at all?
 
 	// Check working directory status to detect potential conflicts
-	warnings := []string{}
+	var warnings []string
 
 	// Check for staged changes
 	stagedOutput, err := b.git.GitOutput("diff", "--cached", "--name-only")
@@ -60,9 +75,9 @@ func (b *BackUndoer) GetUndoCommand() (*UndoCommand, error) {
 	}
 
 	// Use "git checkout -" to go back to the previous branch/commit
-	return NewUndoCommand(b.git,
+	return []*UndoCommand{NewUndoCommand(b.git,
 		"git checkout -",
 		"Switch back to previous branch/commit",
 		warnings...,
-	), nil
+	)}, nil
 }

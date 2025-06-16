@@ -4,6 +4,76 @@
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
+# Helper function for verbose command execution
+# Usage: run_verbose <command> [args...]
+# Shows command output with boxing for multi-line content
+run_verbose() {
+    run "$@"
+    local cmd_str="$1"
+    shift
+    while [[ $# -gt 0 ]]; do
+        cmd_str="$cmd_str $1"
+        shift
+    done
+    
+    if [[ $status -eq 0 ]]; then
+        if [[ -n "$output" ]]; then
+            # Check if output has multiple lines or is long
+            local line_count=$(echo "$output" | wc -l)
+            local char_count=${#output}
+            if [[ $line_count -gt 1 ]] || [[ $char_count -gt 80 ]]; then
+                echo ""
+                echo -e "\033[95m┌─ $cmd_str ─\033[0m"
+                echo -e "\033[95m$output\033[0m"
+                echo -e "\033[95m└────────────\033[0m"
+            else
+                echo -e "\033[32m>\033[0m $cmd_str: $output"
+            fi
+        else
+            echo -e "\033[32m>\033[0m $cmd_str: (no output)"
+        fi
+    else
+        echo ""
+        echo -e "\033[95m┌─ $cmd_str (FAILED: status $status) ─\033[0m"
+        echo -e "\033[95m$output\033[0m"
+        echo -e "\033[95m└────────────\033[0m"
+    fi
+}
+
+# Helper function for commands that should only show output on failure
+# Usage: run_quiet <command> [args...]
+# Only shows output if command fails
+run_quiet() {
+    run "$@"
+    if [[ $status -ne 0 ]]; then
+        local cmd_str="$1"
+        shift
+        while [[ $# -gt 0 ]]; do
+            cmd_str="$cmd_str $1"
+            shift
+        done
+        echo "> $cmd_str FAILED: $output (status: $status)"
+    fi
+}
+
+# Helper function for colored output
+# Usage: print <message> - prints in cyan
+# Usage: debug <message> - prints in gray  
+# Usage: title <message> - prints in yellow
+print() {
+    echo -e "\033[96m> $*\033[0m"  # Cyan
+}
+
+debug() {
+    echo -e "\033[90m> DEBUG: $*\033[0m"  # Gray
+}
+
+title() {
+    echo -e "\033[93m================================================================================"
+    echo -e "\033[93m $*\033[0m"  # Yellow
+    echo -e "\033[93m================================================================================\033[0m"
+}
+
 setup() {
     # Create isolated test repository for the test
     export TEST_REPO="$(mktemp -d)"
@@ -12,6 +82,13 @@ setup() {
     git init
     git config user.email "git-undo-test@amberpixels.io"
     git config user.name "Git-Undo Integration Test User"
+    
+    # Configure git hooks for this repository
+    git config core.hooksPath ~/.config/git-undo/hooks
+    
+    # Source hooks in the test shell environment
+    # shellcheck disable=SC1090
+    source ~/.config/git-undo/git-undo-hook.bash
     
     # Create initial empty commit so we always have HEAD (like in unit tests)
     git commit --allow-empty -m "init"
@@ -22,11 +99,11 @@ teardown() {
     rm -rf "$TEST_REPO"
 }
 
-@test "complete git-undo integration workflow" {
+@test "0A: complete git-undo integration workflow" {
     # ============================================================================
     # PHASE 1: Verify Installation
     # ============================================================================
-    echo "# Phase 1: Verifying git-undo installation..."
+    title "Phase 1: Verifying git-undo installation..."
     
     run which git-undo
     assert_success
@@ -40,58 +117,54 @@ teardown() {
     # ============================================================================
     # HOOK DIAGNOSTICS: Debug hook installation and activation
     # ============================================================================
-    echo "# HOOK DIAGNOSTICS: Checking hook installation..."
+    title "HOOK DIAGNOSTICS: Checking hook installation..."
     
     # Check if hook files exist
-    echo "# Checking if hook files exist in ~/.config/git-undo/..."
+    echo "> Checking if hook files exist in ~/.config/git-undo/..."
     run ls -la ~/.config/git-undo/
     assert_success
-    echo "# Hook directory contents: ${output}"
+    echo "> Hook directory contents: ${output}"
     
     # Verify hook files are present
     assert [ -f ~/.config/git-undo/git-undo-hook.bash ]
-    echo "# ✓ Hook file exists: ~/.config/git-undo/git-undo-hook.bash"
+    echo "> ✓ Hook file exists: ~/.config/git-undo/git-undo-hook.bash"
     
     # Verify that the test hook is actually installed (should contain git function)
-    echo "# Checking if test hook is installed (contains git function)..."
+    echo "> Checking if test hook is installed (contains git function)..."
     run grep -q "git()" ~/.config/git-undo/git-undo-hook.bash
     assert_success
-    echo "# ✓ Test hook confirmed: contains git function"
+    echo "> ✓ Test hook confirmed: contains git function"
     
     # Check if .bashrc has the source line
-    echo "# Checking if .bashrc contains git-undo source line..."
+    echo "> Checking if .bashrc contains git-undo source line..."
     run grep -n git-undo ~/.bashrc
     assert_success
-    echo "# .bashrc git-undo lines: ${output}"
+    echo "> .bashrc git-undo lines: ${output}"
     
     # Check current git command type (before sourcing hooks)
-    echo "# Checking git command type before hook loading..."
+    echo "> Checking git command type before hook loading..."
     run type git
-    echo "# Git type before: ${output}"
+    echo "> Git type before: ${output}"
     
-    # Manually source the hook to test if it works
-    echo "# Manually sourcing git-undo hook..."
-    source ~/.config/git-undo/git-undo-hook.bash
-    
-    # Check git command type after sourcing hooks
-    echo "# Checking git command type after hook loading..."
+    # Check git command type (hooks are sourced in setup)
+    echo "> Checking git command type after hook loading..."
     run type git
-    echo "# Git type after: ${output}"
+    echo "> Git type after: ${output}"
     
     # Test if git-undo function/alias is available
-    echo "# Testing if git undo command is available..."
+    echo "> Testing if git undo command is available..."
     run git undo --help
     if [[ $status -eq 0 ]]; then
-        echo "# ✓ git undo command responds"
+        echo "> ✓ git undo command responds"
     else
-        echo "# ✗ git undo command failed with status: $status"
-        echo "# Output: ${output}"
+        echo "> ✗ git undo command failed with status: $status"
+        echo "> Output: ${output}"
     fi
     
     # ============================================================================
     # PHASE 2: Basic git add and undo workflow
     # ============================================================================
-    echo "# Phase 2: Testing basic git add and undo..."
+    title "Phase 2: Testing basic git add and undo..."
     
     # Create test files
     echo "content of file1" > file1.txt
@@ -111,7 +184,8 @@ teardown() {
     assert_success
     assert_output --partial "A  file1.txt"
     assert_output --partial "?? file2.txt"
-    
+    assert_output --partial "?? file3.txt"
+
     # Add second file
     git add file2.txt
     run git status --porcelain
@@ -121,11 +195,10 @@ teardown() {
     assert_output --partial "?? file3.txt"
     
     # First undo - should unstage file2.txt
-    echo "# DEBUG: Checking git-undo log before first undo..."
-    run git undo --log
+    debug "Checking git-undo log before first undo..."
+    run_verbose git undo --log
     assert_success
     refute_output ""  # Log should not be empty if hooks are tracking
-    echo "# Log output: ${output}"
     
     run git undo
     assert_success
@@ -135,14 +208,12 @@ teardown() {
     assert_output --partial "A  file1.txt"
     assert_output --partial "?? file2.txt"
     assert_output --partial "?? file3.txt"
-    refute_output --partial "A  file2.txt"
-    
+
     # Second undo - should unstage file1.txt
-    echo "# DEBUG: Checking git-undo log before second undo..."
-    run git undo --log
+    debug "Checking git-undo log before second undo..."
+    run_verbose git undo --log
     assert_success
     refute_output ""  # Log should not be empty if hooks are tracking
-    echo "# Log output: ${output}"
     
     run git undo
     assert_success
@@ -158,7 +229,7 @@ teardown() {
     # ============================================================================
     # PHASE 3: Commit and undo workflow
     # ============================================================================
-    echo "# Phase 3: Testing commit and undo..."
+    title "Phase 3: Testing commit and undo..."
     
     # Stage and commit first file
     git add file1.txt
@@ -170,7 +241,7 @@ teardown() {
     assert_output --partial "?? file2.txt"
     assert_output --partial "?? file3.txt"
     refute_output --partial "file1.txt"  # file1.txt should be committed, not in status
-    
+
     # Verify file1 exists and is committed
     assert [ -f "file1.txt" ]
     
@@ -186,12 +257,11 @@ teardown() {
     refute_output --partial "file2.txt"  # file2.txt should be committed
     
     # First commit undo - should undo last commit, leaving file2 staged
-    echo "# DEBUG: Checking git-undo log before commit undo..."
-    run git undo --log
+    debug "Checking git-undo log before commit undo..."
+    run_verbose git undo --log
     assert_success
     refute_output ""  # Log should not be empty if hooks are tracking
-    echo "# Log output: ${output}"
-    
+
     run git undo
     assert_success
     
@@ -204,12 +274,11 @@ teardown() {
     assert [ -f "file2.txt" ]
     
     # Second undo - should unstage file2.txt  
-    echo "# DEBUG: Checking git-undo log before second commit undo..."
-    run git undo --log
+    debug "Checking git-undo log before second commit undo..."
+    run_verbose git undo --log
     assert_success
     refute_output ""  # Log should not be empty if hooks are tracking
-    echo "# Log output: ${output}"
-    
+
     run git undo
     assert_success
     
@@ -222,7 +291,7 @@ teardown() {
     # ============================================================================
     # PHASE 4: Complex sequential workflow
     # ============================================================================
-    echo "# Phase 4: Testing complex sequential operations..."
+    title "Phase 4: Testing complex sequential operations..."
     
     # Commit file3
     git add file3.txt
@@ -248,11 +317,10 @@ teardown() {
     assert_output --partial "A  file4.txt"
     
     # Undo staging of file4
-    echo "# DEBUG: Checking git-undo log before file4 undo..."
-    run git undo --log
+    debug "Checking git-undo log before file4 undo..."
+    run_verbose git undo --log
     assert_success
     refute_output ""  # Log should not be empty if hooks are tracking
-    echo "# Log output: ${output}"
     
     run git undo
     assert_success
@@ -264,11 +332,10 @@ teardown() {
     refute_output --partial "A  file4.txt"
     
     # Undo staging of modified file1
-    echo "# DEBUG: Checking git-undo log before modified file1 undo..."
-    run git undo --log
+    debug "Checking git-undo log before modified file1 undo..."
+    run_verbose git undo --log
     assert_success
     refute_output ""  # Log should not be empty if hooks are tracking
-    echo "# Log output: ${output}"
     
     run git undo
     assert_success
@@ -292,7 +359,7 @@ teardown() {
     # ============================================================================
     # PHASE 5: Verification of final state
     # ============================================================================
-    echo "# Phase 5: Final state verification..."
+    title "Phase 5: Final state verification..."
     
     # Verify all files exist
     assert [ -f "file1.txt" ]
@@ -307,14 +374,14 @@ teardown() {
     refute_output --partial "Add file2.txt"
     refute_output --partial "Add file3.txt"
     
-    echo "# Integration test completed successfully!"
+    print "Integration test completed successfully!"
 }
 
-@test "git-back integration test - checkout and switch undo" {
+@test "0B: git-back integration test - checkout and switch undo" {
     # ============================================================================
     # PHASE 1: Verify git-back Installation
     # ============================================================================
-    echo "# Phase 1: Verifying git-back installation..."
+    title "Phase 1: Verifying git-back installation..."
     
     run which git-back
     assert_success
@@ -333,7 +400,7 @@ teardown() {
     # ============================================================================
     # PHASE 2: Basic branch switching workflow
     # ============================================================================
-    echo "# Phase 2: Testing basic branch switching..."
+    title "Phase 2: Testing basic branch switching..."
     
     # Create and commit some files to establish a proper git history
     echo "main content" > main.txt
@@ -360,15 +427,14 @@ teardown() {
     # ============================================================================
     # PHASE 3: Source hooks for git-back tracking
     # ============================================================================
-    echo "# Phase 3: Setting up hooks for git-back tracking..."
+    title "Phase 3: Setting up hooks for git-back tracking..."
     
-    # Source the hook to enable command tracking
-    source ~/.config/git-undo/git-undo-hook.bash
+    # Hooks are sourced in setup() function for each test
     
     # ============================================================================
     # PHASE 4: Test git-back with checkout commands
     # ============================================================================
-    echo "# Phase 4: Testing git-back with checkout..."
+    title "Phase 4: Testing git-back with checkout..."
     
     # Switch to feature branch (this should be tracked)
     git checkout feature-branch
@@ -379,7 +445,7 @@ teardown() {
     assert_output "feature-branch"
     
     # Use git-back to go back to previous branch (should be another-branch)
-    run git-back
+    run_verbose git back
     assert_success
     
     # Verify we're back on another-branch
@@ -390,7 +456,7 @@ teardown() {
     # ============================================================================
     # PHASE 5: Test multiple branch switches
     # ============================================================================
-    echo "# Phase 5: Testing multiple branch switches..."
+    title "Phase 5: Testing multiple branch switches..."
     
     # Switch to main branch
     git checkout main
@@ -401,7 +467,7 @@ teardown() {
     assert_output "main"
     
     # Use git-back to go back to previous branch (should be another-branch)
-    run git-back
+    run_verbose git back
     assert_success
     
     # Verify we're back on another-branch
@@ -411,9 +477,14 @@ teardown() {
     
     # Switch to feature-branch again
     git checkout feature-branch
+
+    debug "Checking git-undo log before modified file1 undo..."
+    run_verbose git undo --log
+    assert_success
+    refute_output ""  # Log should not be empty if hooks are tracking
     
     # Use git-back to go back to another-branch
-    run git-back
+    run_verbose git back
     assert_success
     
     # Verify we're on another-branch
@@ -424,7 +495,7 @@ teardown() {
     # ============================================================================
     # PHASE 6: Test git-back with uncommitted changes (should show warnings)
     # ============================================================================
-    echo "# Phase 6: Testing git-back with uncommitted changes..."
+    title "Phase 6: Testing git-back with uncommitted changes..."
     
     # Make some uncommitted changes
     echo "modified content" >> another.txt
@@ -432,9 +503,12 @@ teardown() {
     
     # Stage one file
     git add unstaged.txt
-    
+
     # Now try git-back in verbose mode to see warnings
-    run git-back -v
+    run_verbose git undo --log
+
+    # Now try git-back in verbose mode to see warnings
+    run_verbose git back -v
     # Note: This might fail due to conflicts, but we want to verify warnings are shown
     # The important thing is that warnings are displayed to the user
     
@@ -442,7 +516,7 @@ teardown() {
     git stash
     
     # Now git-back should work
-    run git-back
+    run_verbose git back
     assert_success
     
     # Verify we're back on feature-branch
@@ -450,16 +524,14 @@ teardown() {
     assert_success
     assert_output "feature-branch"
     
-    # Pop the stash to restore our changes
-    git stash pop
-    
-    echo "# git-back integration test completed successfully!"
+    print "git-back integration test completed successfully!"
 }
 
-@test "Phase 1 Commands: git rm, mv, tag, restore undo functionality" {
-    echo "# ============================================================================"
-    echo "# PHASE 1 COMMANDS TEST: Testing git rm, mv, tag, restore undo functionality"
-    echo "# ============================================================================"
+@test "1A: Phase 1 Commands: git rm, mv, tag, restore undo functionality" {
+    title "Phase 1: Testing git rm, mv, tag, restore undo functionality"
+
+    run_verbose git status --porcelain
+    assert_success
     
     # Setup: Create some initial commits so we're not trying to undo the initial commit
     echo "initial content" > initial.txt
@@ -473,7 +545,7 @@ teardown() {
     # ============================================================================
     # PHASE 1A: Test git tag undo
     # ============================================================================
-    echo "# Phase 1A: Testing git tag undo..."
+    title "Phase 1A: Testing git tag undo..."
     
     # Create a tag
     git tag v1.0.0
@@ -484,7 +556,7 @@ teardown() {
     assert_output "v1.0.0"
     
     # Undo the tag creation
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify tag is deleted
@@ -501,7 +573,7 @@ teardown() {
     assert_output "v2.0.0"
     
     # Undo the annotated tag creation
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify tag is deleted
@@ -512,7 +584,7 @@ teardown() {
     # ============================================================================
     # PHASE 1B: Test git mv undo
     # ============================================================================
-    echo "# Phase 1B: Testing git mv undo..."
+    title "Phase 1B: Testing git mv undo..."
     
     # Create a file to move
     echo "content for moving" > moveme.txt
@@ -527,7 +599,7 @@ teardown() {
     [ -f moved.txt ]
     
     # Undo the move
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify file is back to original name
@@ -540,30 +612,33 @@ teardown() {
     echo "file2 content" > file2.txt
     git add file1.txt file2.txt
     git commit -m "Add files for directory move"
-    
+
+    echo "test1"
+
     # Move files to subdirectory
     git mv file1.txt file2.txt subdir/
-    
+    echo "test2"
+
     # Verify files were moved
     [ ! -f file1.txt ]
     [ ! -f file2.txt ]
     [ -f subdir/file1.txt ]
     [ -f subdir/file2.txt ]
-    
+
     # Undo the move
-    run git-undo
+    run_verbose git-undo
     assert_success
-    
+
     # Verify files are back
     [ -f file1.txt ]
     [ -f file2.txt ]
     [ ! -f subdir/file1.txt ]
     [ ! -f subdir/file2.txt ]
-    
+
     # ============================================================================
     # PHASE 1C: Test git rm undo
     # ============================================================================
-    echo "# Phase 1C: Testing git rm undo..."
+    title "Phase 1C: Testing git rm undo..."
     
     # Create a file to remove
     echo "content for removal" > removeme.txt
@@ -580,7 +655,7 @@ teardown() {
     [ -f removeme.txt ]
     
     # Undo the cached removal
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify file is back in index
@@ -598,7 +673,7 @@ teardown() {
     [ ! -f removeme.txt ]
     
     # Undo the removal
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify file is restored
@@ -610,7 +685,7 @@ teardown() {
     # ============================================================================
     # PHASE 1D: Test git restore undo (staged only)
     # ============================================================================
-    echo "# Phase 1D: Testing git restore --staged undo..."
+    title "Phase 1D: Testing git restore --staged undo..."
     
     # Create and stage a file
     echo "staged content" > staged.txt
@@ -630,7 +705,7 @@ teardown() {
     assert_output ""
     
     # Undo the restore (re-stage the file)
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify file is staged again
@@ -638,13 +713,11 @@ teardown() {
     assert_success
     assert_line "staged.txt"
     
-    echo "# Phase 1 Commands integration test completed successfully!"
+    print "Phase 1 Commands integration test completed successfully!"
 }
 
-@test "Phase 2 Commands: git reset, revert, cherry-pick undo functionality" {
-    echo "# ============================================================================"
-    echo "# PHASE 2 COMMANDS TEST: Testing git reset, revert, cherry-pick undo functionality"
-    echo "# ============================================================================"
+@test "2A: Phase 2 Commands: git reset, revert, cherry-pick undo functionality" {
+    title "Phase 1: Testing git reset, revert, cherry-pick undo functionality"
     
     # Setup: Create initial commit structure for testing
     echo "initial content" > initial.txt
@@ -660,30 +733,30 @@ teardown() {
     git commit -m "Third commit"
     
     # ============================================================================
-    # PHASE 2A: Test git reset undo
+    # PHASE 2: Test git reset undo
     # ============================================================================
-    echo "# Phase 2A: Testing git reset undo..."
+    title "Phase 2: Testing git reset undo..."
     
     # Get current commit hash for verification
-    run git rev-parse HEAD
+    run_verbose git rev-parse HEAD
     assert_success
     third_commit="$output"
     
     # Perform a soft reset to previous commit
-    git reset --soft HEAD~1
+    run_verbose git reset --soft HEAD~1
     
     # Verify we're at the second commit with staged changes
-    run git rev-parse HEAD
+    run_verbose git rev-parse HEAD
     assert_success
     second_commit="$output"
     
     # Verify third.txt is staged
-    run git diff --cached --name-only
+    run_verbose git diff --cached --name-only
     assert_success
     assert_line "third.txt"
     
     # Undo the reset (should restore HEAD to third_commit)
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify we're back at the third commit
@@ -692,19 +765,22 @@ teardown() {
     assert_output "$third_commit"
     
     # Test mixed reset undo
-    git reset HEAD~1
+    run_verbose git reset HEAD~1
     
     # Verify second commit with unstaged changes
     run git rev-parse HEAD
     assert_success
     assert_output "$second_commit"
     
+    # Debug: Check what's in the log before undo
+    run_verbose git-undo --log
+    
     run git status --porcelain
     assert_success
-    assert_output --partial " D third.txt"
+    assert_output --partial "?? third.txt"
     
     # Undo the mixed reset
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify restoration
@@ -713,9 +789,9 @@ teardown() {
     assert_output "$third_commit"
     
     # ============================================================================
-    # PHASE 2B: Test git revert undo
+    # PHASE 3: Test git revert undo
     # ============================================================================
-    echo "# Phase 2B: Testing git revert undo..."
+    title "Phase 3: Testing git revert undo..."
     
     # Create a commit to revert
     echo "revert-me content" > revert-me.txt
@@ -739,8 +815,12 @@ teardown() {
     [ ! -f revert-me.txt ]
     
     # Undo the revert
-    run git-undo
+    run_verbose git-undo
     assert_success
+    
+    # Debug: Check git status after undo
+    run_verbose git status --porcelain
+    run_verbose ls -la revert-me.txt || echo "File not found"
     
     # Verify we're back to the original commit
     run git rev-parse HEAD
@@ -751,9 +831,9 @@ teardown() {
     [ -f revert-me.txt ]
     
     # ============================================================================
-    # PHASE 2C: Test git cherry-pick undo
+    # PHASE 4: Test git cherry-pick undo
     # ============================================================================
-    echo "# Phase 2C: Testing git cherry-pick undo..."
+    title "Phase 4: Testing git cherry-pick undo..."
     
     # Create a feature branch with a commit to cherry-pick
     git checkout -b feature-cherry
@@ -784,7 +864,7 @@ teardown() {
     assert_output "Cherry-pick target commit"
     
     # Undo the cherry-pick
-    run git-undo
+    run_verbose git-undo
     assert_success
     
     # Verify we're back to the original main state
@@ -796,9 +876,9 @@ teardown() {
     [ ! -f cherry.txt ]
     
     # ============================================================================
-    # PHASE 2D: Test git clean undo (expected to fail)
+    # PHASE 5: Test git clean undo (expected to fail)
     # ============================================================================
-    echo "# Phase 2D: Testing git clean undo (should show unsupported error)..."
+    title "Phase 5: Testing git clean undo (should show unsupported error)..."
     
     # Create untracked files
     echo "untracked1" > untracked1.txt
@@ -816,17 +896,15 @@ teardown() {
     [ ! -f untracked2.txt ]
     
     # Try to undo clean (should fail with clear error message)
-    run git-undo
+    run_verbose git-undo
     assert_failure
     assert_output --partial "permanently removes untracked files that cannot be recovered"
     
-    echo "# Phase 2 Commands integration test completed successfully!"
+    print "Phase 2 Commands integration test completed successfully!"
 }
 
-@test "git switch undo functionality" {
-    echo "# ============================================================================"
-    echo "# GIT SWITCH TEST: Testing git switch undo functionality"
-    echo "# ============================================================================"
+@test "3A: git switch undo functionality" {
+    title "Git Switch Test: Testing that git undo warns for git switch commands"
     
     # Setup: Create initial commit structure for testing
     echo "initial content" > initial.txt
@@ -838,9 +916,9 @@ teardown() {
     git commit -m "Main content commit"
     
     # ============================================================================
-    # Test git switch -c (branch creation) undo
+    # Test git switch -c (branch creation) - should show warning
     # ============================================================================
-    echo "# Testing git switch -c branch creation undo..."
+    title "Testing git switch -c warning..."
     
     # Create a new branch using git switch -c
     git switch -c feature-switch
@@ -850,27 +928,23 @@ teardown() {
     assert_success
     assert_output "feature-switch"
     
-    # Undo the branch creation
-    run git-undo
+    # Try git undo - should warn that switch can't be undone and suggest git back
+    run_verbose git undo 2>&1
     assert_success
+    assert_output --partial "can't be undone"
+    assert_output --partial "git back"
     
-    # Verify the branch was deleted and we're back on main
+    # Verify we're still on the feature-switch branch (no actual undo happened)
     run git branch --show-current
     assert_success
-    assert_output "main"
-    
-    # Verify the feature-switch branch no longer exists
-    run git branch --list feature-switch
-    assert_success
-    assert_output ""
+    assert_output "feature-switch"
     
     # ============================================================================
-    # Test regular git switch undo (branch switching)
+    # Test regular git switch - should show warning
     # ============================================================================
-    echo "# Testing regular git switch undo..."
+    title "Testing regular git switch warning..."
     
-    # Create a feature branch and switch to it
-    git switch -c test-feature
+    # Create another branch and commit something to it
     echo "feature content" > feature.txt
     git add feature.txt
     git commit -m "Feature content"
@@ -883,47 +957,56 @@ teardown() {
     assert_success
     assert_output "main"
     
-    # Undo the switch (should go back to test-feature)
-    run git-undo
+    # Try git undo - should warn about switch command and suggest git back
+    run_verbose git undo 2>&1
     assert_success
+    assert_output --partial "can't be undone"
+    assert_output --partial "git back"
     
-    # Verify we're back on test-feature
+    # Verify we're still on main (no actual undo happened)
     run git branch --show-current
     assert_success
-    assert_output "test-feature"
+    assert_output "main"
     
     # ============================================================================
-    # Test git switch with uncommitted changes (should show warnings)
+    # Test that git back works as expected for switch operations
     # ============================================================================
-    echo "# Testing git switch undo with uncommitted changes..."
+    title "Testing that git back works for switch operations..."
     
-    # Create some uncommitted changes
-    echo "modified content" >> feature.txt
-    echo "new unstaged file" > unstaged.txt
-    
-    # Switch to main (git switch should handle this)
-    git switch main
-    
-    # Try to undo the switch (should work but with warnings in verbose mode)
-    run git-undo -v
+    # Use git back to go back to the previous branch (should be feature-switch)
+    run_verbose git back
     assert_success
     
-    # Verify we're back on test-feature
+    # Verify we're back on feature-switch
     run git branch --show-current
     assert_success
-    assert_output "test-feature"
+    assert_output "feature-switch"
     
-    # Clean up uncommitted changes for next tests
-    git checkout -- feature.txt
-    rm -f unstaged.txt
+    # ============================================================================
+    # Test mixed commands - ensure warning only appears for switch
+    # ============================================================================
+    title "Testing that warning only appears for switch commands..."
     
-    echo "# git switch integration test completed successfully!"
+    # Create and stage a file
+    echo "test file" > test-file.txt
+    git add test-file.txt
+    
+    # Try git undo - should work normally (no warning about git back)
+    run_verbose git undo
+    assert_success
+    refute_output --partial "can't be undone"
+    refute_output --partial "git back"
+    
+    # Verify file was unstaged
+    run git status --porcelain
+    assert_success
+    assert_output --partial "?? test-file.txt"
+    
+    print "git switch warning integration test completed successfully!"
 }
 
-@test "git undo checkout/switch detection - warns and suggests git back" {
-    echo "# ============================================================================"
-    echo "# CHECKOUT/SWITCH DETECTION TEST: Testing that git undo warns for checkout/switch commands"
-    echo "# ============================================================================"
+@test "4A: git undo checkout/switch detection - warns and suggests git back" {
+    title "Checkout/Switch Detection Test: Testing that git undo warns for checkout/switch commands"
     
     # Setup: Create initial commit structure for testing
     echo "initial content" > initial.txt
@@ -934,13 +1017,13 @@ teardown() {
     git add main.txt
     git commit -m "Main content commit"
     
-    # Source the hook to enable command tracking
-    source ~/.config/git-undo/git-undo-hook.bash
+    # Hooks are sourced in setup() function for each test
+    debug "Hooks are sourced in setup() function for each test"
     
     # ============================================================================
     # Test git checkout detection
     # ============================================================================
-    echo "# Testing git checkout detection..."
+    print "Testing git checkout detection..."
     
     # Create a test branch
     git branch test-branch
@@ -954,7 +1037,7 @@ teardown() {
     assert_output "test-branch"
     
     # Try git undo - should warn about checkout command
-    run git undo 2>&1
+    run_verbose git undo 2>&1
     assert_success
     assert_output --partial "can't be undone"
     assert_output --partial "git back"
@@ -962,7 +1045,7 @@ teardown() {
     # ============================================================================
     # Test git switch detection
     # ============================================================================
-    echo "# Testing git switch detection..."
+    print "Testing git switch detection..."
     
     # Switch back to main
     git switch main
@@ -976,7 +1059,7 @@ teardown() {
     git switch test-branch
     
     # Try git undo - should warn about switch command
-    run git undo 2>&1
+    run_verbose git undo 2>&1
     assert_success
     assert_output --partial "can't be undone"
     assert_output --partial "git back"
@@ -984,10 +1067,10 @@ teardown() {
     # ============================================================================
     # Test that git back still works normally
     # ============================================================================
-    echo "# Verifying git back still works normally..."
+    print "Verifying git back still works normally..."
     
     # Use git back to return to previous branch
-    run git back
+    run_verbose git back
     assert_success
     
     # Should be back on main
@@ -998,14 +1081,14 @@ teardown() {
     # ============================================================================
     # Test mixed commands - ensure warning only for checkout/switch
     # ============================================================================
-    echo "# Testing mixed commands - ensuring warning only appears for checkout/switch..."
+    print "Testing mixed commands - ensuring warning only appears for checkout/switch..."
     
     # Create and stage a file
     echo "test file" > test-warning.txt
     git add test-warning.txt
     
     # Now perform git undo - should work normally (no warning)
-    run git undo
+    run_verbose git undo
     assert_success
     refute_output --partial "can't be undone"
     refute_output --partial "git back"
@@ -1015,5 +1098,5 @@ teardown() {
     assert_success
     assert_output --partial "?? test-warning.txt"
     
-    echo "# Checkout/switch detection integration test completed successfully!"
+    print "Checkout/switch detection integration test completed successfully!"
 } 

@@ -478,6 +478,42 @@ func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...Ref) (*Entry, error) {
 	return foundEntry, nil
 }
 
+// GetLastCheckoutSwitchEntryForToggle returns the last checkout or switch command entry
+// for git-back, including undoed entries. This allows git-back to toggle back and forth.
+func (l *Logger) GetLastCheckoutSwitchEntryForToggle(refArg ...Ref) (*Entry, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	ref := l.resolveRef(refArg...)
+
+	var foundEntry *Entry
+	err := l.processLogFile(func(line string) bool {
+		// Parse the log line into an Entry (including undoed entries)
+		entry, err := parseLogLine(line)
+		if err != nil { // TODO: warnings maybe?
+			return true
+		}
+		if !l.matchRef(entry.Ref, ref) {
+			return true
+		}
+
+		// Check if this is a checkout or switch command
+		if !isCheckoutOrSwitchCommand(entry.Command) {
+			return true
+		}
+
+		// Found a matching entry (even if undoed)!
+		foundEntry = entry
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return foundEntry, nil
+}
+
 // isCheckoutOrSwitchCommand checks if a command is a git checkout or git switch command.
 func isCheckoutOrSwitchCommand(command string) bool {
 	// Parse the command to check its type

@@ -14,8 +14,8 @@ type RestoreUndoer struct {
 
 var _ Undoer = &RestoreUndoer{}
 
-// GetUndoCommand returns the command that would undo the restore operation.
-func (r *RestoreUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the restore operation.
+func (r *RestoreUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Parse flags to understand what was restored
 	var isStaged bool
 	var isWorktree bool
@@ -75,10 +75,10 @@ func (r *RestoreUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if isStaged && !isWorktree {
 		// Only --staged was used: files were unstaged from index
 		// Undo: re-add the files to staging area
-		return NewUndoCommand(r.git,
+		return []*UndoCommand{NewUndoCommand(r.git,
 			fmt.Sprintf("git add %s", strings.Join(files, " ")),
 			fmt.Sprintf("Re-stage files: %s", strings.Join(files, ", ")),
-		), nil
+		)}, nil
 	}
 
 	if isWorktree {
@@ -92,11 +92,11 @@ func (r *RestoreUndoer) GetUndoCommand() (*UndoCommand, error) {
 		warnings = append(warnings, "Consider using 'git stash' before 'git restore' in the future")
 		warnings = append(warnings, "You may be able to recover using 'git reflog' or your editor's history")
 
-		return NewUndoCommand(r.git,
+		return []*UndoCommand{NewUndoCommand(r.git,
 			"echo 'Cannot automatically undo git restore --worktree'",
 			"Cannot undo working tree restoration",
 			warnings...,
-		), fmt.Errorf("%w: cannot undo git restore --worktree (previous working tree state unknown)", ErrUndoNotSupported)
+		)}, fmt.Errorf("%w: cannot undo git restore --worktree (previous working tree state unknown)", ErrUndoNotSupported)
 	}
 
 	// Should not reach here, but just in case

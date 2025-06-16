@@ -14,15 +14,15 @@ type MergeUndoer struct {
 
 var _ Undoer = &MergeUndoer{}
 
-// GetUndoCommand returns the command that would undo the merge operation.
-func (m *MergeUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the merge operation.
+func (m *MergeUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if this was a merge with conflicts
 	output, err := m.git.GitOutput("status")
 	if err == nil && strings.Contains(output, "You have unmerged paths") {
-		return NewUndoCommand(m.git,
+		return []*UndoCommand{NewUndoCommand(m.git,
 			"git merge --abort",
 			"Abort merge and restore state before merging",
-		), nil
+		)}, nil
 	}
 
 	// Check if ORIG_HEAD exists (it should for a merge)
@@ -36,16 +36,16 @@ func (m *MergeUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if fastForwardMergeErr := m.git.GitRun("rev-parse", "-q", "--verify", "HEAD^2"); fastForwardMergeErr != nil {
 		// For fast-forward merges, we can just reset to ORIG_HEAD
 		//nolint:nilerr // it's OK here
-		return NewUndoCommand(m.git,
+		return []*UndoCommand{NewUndoCommand(m.git,
 			"git reset --hard ORIG_HEAD",
 			"Undo fast-forward merge by resetting to ORIG_HEAD",
-		), nil
+		)}, nil
 	}
 
 	// For true merges (with a merge commit), we use --merge flag
-	return NewUndoCommand(m.git,
+	return []*UndoCommand{NewUndoCommand(m.git,
 		"git reset --merge ORIG_HEAD",
 		"Undo merge commit by resetting to ORIG_HEAD",
 		"This will undo the merge and restore the state before merging",
-	), nil
+	)}, nil
 }

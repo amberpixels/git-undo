@@ -14,8 +14,8 @@ type AddUndoer struct {
 
 var _ Undoer = &AddUndoer{}
 
-// GetUndoCommand returns the command that would undo the add operation.
-func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the add operation.
+func (a *AddUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if HEAD exists (i.e., if there are any commits)
 	// If there's no HEAD, we need to use 'git reset' instead of 'git restore --staged'
 	headExists := true
@@ -38,9 +38,9 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// If --all flag was used or no specific files, unstage everything
 	if hasAllFlag || len(a.originalCmd.Args) == 0 {
 		if headExists {
-			return NewUndoCommand(a.git, "git restore --staged .", "Unstage all files"), nil
+			return []*UndoCommand{NewUndoCommand(a.git, "git restore --staged .", "Unstage all files")}, nil
 		}
-		return NewUndoCommand(a.git, "git reset", "Unstage all files"), nil
+		return []*UndoCommand{NewUndoCommand(a.git, "git reset", "Unstage all files")}, nil
 	}
 
 	// For other cases, filter out flags and only pass real file paths to restore
@@ -55,22 +55,22 @@ func (a *AddUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// If we only had flags but no files, default to restoring everything
 	if len(filesToRestore) == 0 {
 		if headExists {
-			return NewUndoCommand(a.git, "git restore --staged .", "Unstage all files"), nil
+			return []*UndoCommand{NewUndoCommand(a.git, "git restore --staged .", "Unstage all files")}, nil
 		}
 
-		return NewUndoCommand(a.git, "git reset", "Unstage all files"), nil
+		return []*UndoCommand{NewUndoCommand(a.git, "git reset", "Unstage all files")}, nil
 	}
 
 	if headExists {
-		return NewUndoCommand(
+		return []*UndoCommand{NewUndoCommand(
 			a.git,
 			fmt.Sprintf("git restore --staged %s", strings.Join(filesToRestore, " ")),
 			fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
-		), nil
+		)}, nil
 	}
-	return NewUndoCommand(
+	return []*UndoCommand{NewUndoCommand(
 		a.git,
 		fmt.Sprintf("git reset %s", strings.Join(filesToRestore, " ")),
 		fmt.Sprintf("Unstage specific files: %s", strings.Join(filesToRestore, ", ")),
-	), nil
+	)}, nil
 }

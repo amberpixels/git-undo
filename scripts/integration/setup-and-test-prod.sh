@@ -14,5 +14,7 @@ export PATH="$GOPATH_BIN:$PATH"
 # shellcheck disable=SC1090
 source ~/.bashrc
 
+# Note: Git-undo hooks will be sourced within each BATS test's setup() function
+
 echo "Running integration tests..."
 bats integration-test.bats 

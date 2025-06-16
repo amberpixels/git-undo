@@ -14,8 +14,8 @@ type MvUndoer struct {
 
 var _ Undoer = &MvUndoer{}
 
-// GetUndoCommand returns the command that would undo the mv operation.
-func (m *MvUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the mv operation.
+func (m *MvUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Parse arguments to find source and destination
 	// git mv can be: git mv <source> <dest> or git mv <source1> <source2> ... <dest_dir>
 
@@ -41,10 +41,12 @@ func (m *MvUndoer) GetUndoCommand() (*UndoCommand, error) {
 			return nil, fmt.Errorf("destination '%s' does not exist in git index, cannot undo move", dest)
 		}
 
-		return NewUndoCommand(m.git,
-			fmt.Sprintf("git mv %s %s", dest, source),
-			fmt.Sprintf("Move '%s' back to '%s'", dest, source),
-		), nil
+		return []*UndoCommand{
+			NewUndoCommand(m.git,
+				fmt.Sprintf("git mv %s %s", dest, source),
+				fmt.Sprintf("Move '%s' back to '%s'", dest, source),
+			),
+		}, nil
 	}
 
 	// Handle multiple sources into directory: git mv <source1> <source2> ... <dest_dir>
@@ -52,9 +54,8 @@ func (m *MvUndoer) GetUndoCommand() (*UndoCommand, error) {
 	destDir := nonFlagArgs[len(nonFlagArgs)-1]
 	sources := nonFlagArgs[:len(nonFlagArgs)-1]
 
-	// Build the undo command to move all files back
-	var undoCommands []string
-	var descriptions []string
+	// Build separate undo commands for each file
+	var undoCommands []*UndoCommand
 
 	for _, source := range sources {
 		// Extract the filename from the source path
@@ -73,13 +74,13 @@ func (m *MvUndoer) GetUndoCommand() (*UndoCommand, error) {
 			return nil, fmt.Errorf("moved file '%s' does not exist in destination, cannot undo move", currentPath)
 		}
 
-		undoCommands = append(undoCommands, fmt.Sprintf("git mv %s %s", currentPath, source))
-		descriptions = append(descriptions, fmt.Sprintf("'%s' → '%s'", currentPath, source))
+		// Create individual undo command for this file
+		undoCmd := NewUndoCommand(m.git,
+			fmt.Sprintf("git mv %s %s", currentPath, source),
+			fmt.Sprintf("Move '%s' back to '%s'", currentPath, source),
+		)
+		undoCommands = append(undoCommands, undoCmd)
 	}
 
-	// Combine all undo commands
-	fullUndoCommand := strings.Join(undoCommands, " && ")
-	description := fmt.Sprintf("Move files back: %s", strings.Join(descriptions, ", "))
-
-	return NewUndoCommand(m.git, fullUndoCommand, description), nil
+	return undoCommands, nil
 }

@@ -8,6 +8,14 @@ import (
 	"github.com/amberpixels/git-undo/internal/githelpers"
 )
 
+// Undoer represents an interface for undoing git commands.
+type Undoer interface {
+	// GetUndoCommands returns the commands that would undo the operation
+	// Some operations may require multiple git commands to undo properly
+	GetUndoCommands() ([]*UndoCommand, error)
+}
+
+// GitExec represents an interface for executing git commands.
 type GitExec interface {
 	GitRun(subCmd string, args ...string) error
 	GitOutput(subCmd string, args ...string) (string, error)
@@ -27,6 +35,7 @@ type UndoCommand struct {
 	git GitExec
 }
 
+// NewUndoCommand creates a new UndoCommand instance.
 func NewUndoCommand(git GitExec, cmdStr string, description string, warnings ...string) *UndoCommand {
 	return &UndoCommand{
 		Command:     cmdStr,
@@ -46,12 +55,6 @@ func (cmd *UndoCommand) Exec() error {
 	return cmd.git.GitRun(gitCmd.SubCommand, gitCmd.Args...)
 }
 
-// Undoer represents an interface for undoing git commands.
-type Undoer interface {
-	// GetUndoCommand returns the command that would undo the operation
-	GetUndoCommand() (*UndoCommand, error)
-}
-
 // CommandDetails represents parsed git command details.
 type CommandDetails struct {
 	FullCommand string   // git commit -m "message"
@@ -67,37 +70,6 @@ func (d *CommandDetails) getFirstNonFlagArg() string {
 		}
 	}
 	return ""
-}
-
-// parseGitCommand parses a git command string into a CommandDetails struct.
-func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
-	parsed, err := githelpers.ParseGitCommand(gitCmdStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse input git command: %w", err)
-	}
-	if !parsed.Supported {
-		return nil, fmt.Errorf("unsupported git command format: %s", gitCmdStr)
-	}
-
-	return &CommandDetails{
-		FullCommand: gitCmdStr,
-		Command:     "git",
-		SubCommand:  parsed.Name,
-		Args:        parsed.Args,
-	}, nil
-}
-
-// InvalidUndoer represents an undoer for commands that cannot be parsed or are not supported.
-type InvalidUndoer struct {
-	rawCommand string
-	parseError error
-}
-
-func (i *InvalidUndoer) GetUndoCommand() (*UndoCommand, error) {
-	if i.parseError != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUndoNotSupported, i.parseError)
-	}
-	return nil, fmt.Errorf("%w: %s", ErrUndoNotSupported, i.rawCommand)
 }
 
 // New returns the appropriate Undoer implementation for a git command.
@@ -143,17 +115,20 @@ func New(cmdStr string, gitExec GitExec) Undoer {
 	}
 }
 
-// NewBack returns the appropriate Undoer implementation for git-back (checkout/switch undo).
-func NewBack(cmdStr string, gitExec GitExec) Undoer {
-	cmdDetails, err := parseGitCommand(cmdStr)
+// parseGitCommand parses a git command string into a CommandDetails struct.
+func parseGitCommand(gitCmdStr string) (*CommandDetails, error) {
+	parsed, err := githelpers.ParseGitCommand(gitCmdStr)
 	if err != nil {
-		return &InvalidUndoer{rawCommand: cmdStr, parseError: err}
+		return nil, fmt.Errorf("failed to parse input git command: %w", err)
+	}
+	if !parsed.Supported {
+		return nil, fmt.Errorf("unsupported git command format: %s", gitCmdStr)
 	}
 
-	switch cmdDetails.SubCommand {
-	case "checkout", "switch":
-		return &BackUndoer{originalCmd: cmdDetails, git: gitExec}
-	default:
-		return &InvalidUndoer{rawCommand: cmdStr}
-	}
+	return &CommandDetails{
+		FullCommand: gitCmdStr,
+		Command:     "git",
+		SubCommand:  parsed.Name,
+		Args:        parsed.Args,
+	}, nil
 }

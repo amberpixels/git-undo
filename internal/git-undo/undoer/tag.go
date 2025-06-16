@@ -14,8 +14,8 @@ type TagUndoer struct {
 
 var _ Undoer = &TagUndoer{}
 
-// GetUndoCommand returns the command that would undo the tag creation.
-func (t *TagUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the tag creation.
+func (t *TagUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if this was a tag deletion operation
 	for _, arg := range t.originalCmd.Args {
 		if arg == "-d" || arg == "-D" || arg == "--delete" {
@@ -69,8 +69,8 @@ func (t *TagUndoer) GetUndoCommand() (*UndoCommand, error) {
 		return nil, fmt.Errorf("tag '%s' does not exist, cannot undo tag creation", tagName)
 	}
 
-	return NewUndoCommand(t.git,
+	return []*UndoCommand{NewUndoCommand(t.git,
 		fmt.Sprintf("git tag -d %s", tagName),
 		fmt.Sprintf("Delete tag '%s'", tagName),
-	), nil
+	)}, nil
 }

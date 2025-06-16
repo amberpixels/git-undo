@@ -15,8 +15,8 @@ type StashUndoer struct {
 
 var _ Undoer = &StashUndoer{}
 
-// GetUndoCommand returns the command that would undo the stash operation.
-func (s *StashUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the stash operation.
+func (s *StashUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if this was a stash pop/apply operation
 	for _, arg := range s.originalCmd.Args {
 		if arg == "pop" || arg == "apply" {
@@ -32,8 +32,8 @@ func (s *StashUndoer) GetUndoCommand() (*UndoCommand, error) {
 	}
 
 	// Pop the most recent stash and drop it
-	return NewUndoCommand(s.git,
+	return []*UndoCommand{NewUndoCommand(s.git,
 		"git stash pop && git stash drop",
 		"Pop the most recent stash and remove it",
-	), nil
+	)}, nil
 }

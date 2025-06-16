@@ -14,27 +14,27 @@ type SwitchUndoer struct {
 
 var _ Undoer = &SwitchUndoer{}
 
-// GetUndoCommand returns the command that would undo the switch operation.
-func (s *SwitchUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the switch operation.
+func (s *SwitchUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Handle switch -c as branch creation (similar to checkout -b)
 	for i, arg := range s.originalCmd.Args {
 		if (arg == "-c" || arg == "--create") && i+1 < len(s.originalCmd.Args) {
 			branchName := s.originalCmd.Args[i+1]
-			return NewUndoCommand(s.git,
+			return []*UndoCommand{NewUndoCommand(s.git,
 				fmt.Sprintf("git branch -D %s", branchName),
 				fmt.Sprintf("Delete branch '%s' created by switch -c", branchName),
-			), nil
+			)}, nil
 		}
 		// Handle switch -C as force branch creation (overwrites existing branch)
 		if (arg == "-C" || arg == "--force-create") && i+1 < len(s.originalCmd.Args) {
 			branchName := s.originalCmd.Args[i+1]
 			// For force create, we can't easily restore the previous branch state
 			// so we provide a warning and delete the branch
-			return NewUndoCommand(s.git,
+			return []*UndoCommand{NewUndoCommand(s.git,
 				fmt.Sprintf("git branch -D %s", branchName),
 				fmt.Sprintf("Delete branch '%s' created by switch -C", branchName),
 				"Warning: switch -C may have overwritten an existing branch that cannot be restored",
-			), nil
+			)}, nil
 		}
 	}
 
@@ -84,9 +84,9 @@ func (s *SwitchUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	// Use "git switch -" to go back to the previous branch
 	// git switch supports the same "-" syntax as git checkout
-	return NewUndoCommand(s.git,
+	return []*UndoCommand{NewUndoCommand(s.git,
 		"git switch -",
 		fmt.Sprintf("Switch back to previous branch (%s)", prevBranch),
 		warnings...,
-	), nil
+	)}, nil
 }

@@ -15,8 +15,8 @@ type RmUndoer struct {
 
 var _ Undoer = &RmUndoer{}
 
-// GetUndoCommand returns the command that would undo the rm operation.
-func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the rm operation.
+func (r *RmUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Parse flags to understand what type of removal was done
 	var isCachedOnly bool
 	var isRecursive bool
@@ -61,10 +61,10 @@ func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if isCachedOnly {
 		// git rm --cached only removes from index, files still exist in working directory
 		// Undo: re-add the files to the index
-		return NewUndoCommand(r.git,
+		return []*UndoCommand{NewUndoCommand(r.git,
 			fmt.Sprintf("git add %s", strings.Join(files, " ")),
 			fmt.Sprintf("Re-add files to index: %s", strings.Join(files, ", ")),
-		), nil
+		)}, nil
 	}
 
 	// For regular git rm (removes from both index and working directory)
@@ -86,9 +86,9 @@ func (r *RmUndoer) GetUndoCommand() (*UndoCommand, error) {
 	}
 
 	// Use git restore to bring back both working tree and staged versions
-	return NewUndoCommand(r.git,
+	return []*UndoCommand{NewUndoCommand(r.git,
 		fmt.Sprintf("git restore --source=HEAD --staged --worktree %s", strings.Join(files, " ")),
 		fmt.Sprintf("Restore removed files: %s", strings.Join(files, ", ")),
 		warnings...,
-	), nil
+	)}, nil
 }

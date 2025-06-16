@@ -15,8 +15,8 @@ type CherryPickUndoer struct {
 
 var _ Undoer = &CherryPickUndoer{}
 
-// GetUndoCommand returns the command that would undo the cherry-pick operation.
-func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the cherry-pick operation.
+func (c *CherryPickUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if this was a cherry-pick with --no-commit flag
 	noCommit := false
 	for _, arg := range c.originalCmd.Args {
@@ -29,10 +29,10 @@ func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if noCommit {
 		// If --no-commit was used, the cherry-pick changes are staged but not committed
 		// We undo by resetting the index
-		return NewUndoCommand(c.git,
+		return []*UndoCommand{NewUndoCommand(c.git,
 			"git reset --mixed HEAD",
 			"Reset staged cherry-pick changes",
-		), nil
+		)}, nil
 	}
 
 	// For committed cherry-picks, we need to remove the cherry-pick commit
@@ -52,23 +52,30 @@ func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
 
 	if cherryPickHead != "" {
 		// We're in the middle of a cherry-pick (probably due to conflicts)
-		return NewUndoCommand(c.git,
+		return []*UndoCommand{NewUndoCommand(c.git,
 			"git cherry-pick --abort",
 			"Abort ongoing cherry-pick operation",
-		), nil
+		)}, nil
 	}
 
-	// Validate that the current commit looks like it could be a cherry-pick
-	// Check reflog to see if the last operation was cherry-pick
+	// Since we know the original command was cherry-pick (stored in originalCmd),
+	// we can trust this information. However, we still need to validate the current state
+	// to ensure we can safely undo the operation.
+
+	// For safety, check if HEAD has changed since the cherry-pick
+	// If the repo state looks consistent with a cherry-pick, proceed
 	reflogOutput, err := c.git.GitOutput("reflog", "-1", "--format=%s")
 	if err == nil {
 		reflogMsg := strings.TrimSpace(reflogOutput)
-		if !strings.Contains(reflogMsg, "cherry-pick") {
-			// Be more permissive - check if the commit message indicates cherry-pick
+		// Accept cherry-pick, merge (fast-forward), or commit operations
+		// These are all valid outcomes of a cherry-pick command
+		if !strings.Contains(reflogMsg, "cherry-pick") &&
+			!strings.Contains(reflogMsg, "merge") &&
+			!strings.Contains(reflogMsg, "commit") {
+			// As a final check, see if commit message indicates cherry-pick
 			commitMsg, err := c.git.GitOutput("log", "-1", "--format=%s", "HEAD")
 			if err == nil {
 				commitMsg = strings.TrimSpace(commitMsg)
-				// Cherry-picked commits often have (cherry picked from commit ...) suffix
 				if !strings.Contains(commitMsg, "cherry picked from commit") {
 					return nil, errors.New("current HEAD does not appear to be a cherry-pick commit")
 				}
@@ -89,22 +96,22 @@ func (c *CherryPickUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Check for staged changes
 	stagedOutput, err := c.git.GitOutput("diff", "--cached", "--name-only")
 	if err == nil && strings.TrimSpace(stagedOutput) != "" {
-		warnings = append(warnings, "This will preserve staged changes")
+		warnings = append(warnings, "Warning: This will discard staged changes")
 	}
 
 	// Check for unstaged changes
 	unstagedOutput, err := c.git.GitOutput("diff", "--name-only")
 	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
-		warnings = append(warnings, "This will preserve unstaged changes")
+		warnings = append(warnings, "Warning: This will discard unstaged changes")
 	}
 
-	// Use soft reset to preserve working directory and staging area
-	undoCommand := fmt.Sprintf("git reset --soft %s", parentCommit)
+	// Use hard reset to completely remove the cherry-picked changes
+	undoCommand := fmt.Sprintf("git reset --hard %s", parentCommit)
 
 	// Safely truncate commit hash
 	shortHash := getShortHash(currentHead)
 
 	description := fmt.Sprintf("Remove cherry-pick commit %s", shortHash)
 
-	return NewUndoCommand(c.git, undoCommand, description, warnings...), nil
+	return []*UndoCommand{NewUndoCommand(c.git, undoCommand, description, warnings...)}, nil
 }

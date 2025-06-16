@@ -15,8 +15,8 @@ type RevertUndoer struct {
 
 var _ Undoer = &RevertUndoer{}
 
-// GetUndoCommand returns the command that would undo the revert operation.
-func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the revert operation.
+func (r *RevertUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Check if this was a revert with --no-commit flag
 	noCommit := false
 	for _, arg := range r.originalCmd.Args {
@@ -29,10 +29,10 @@ func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
 	if noCommit {
 		// If --no-commit was used, the revert changes are staged but not committed
 		// We undo by resetting the index
-		return NewUndoCommand(r.git,
+		return []*UndoCommand{NewUndoCommand(r.git,
 			"git reset --mixed HEAD",
 			"Reset staged revert changes",
-		), nil
+		)}, nil
 	}
 
 	// For committed reverts, we need to identify the revert commit and remove it
@@ -76,21 +76,21 @@ func (r *RevertUndoer) GetUndoCommand() (*UndoCommand, error) {
 	// Check for staged changes
 	stagedOutput, err := r.git.GitOutput("diff", "--cached", "--name-only")
 	if err == nil && strings.TrimSpace(stagedOutput) != "" {
-		warnings = append(warnings, "This will preserve staged changes")
+		warnings = append(warnings, "Warning: This will discard staged changes")
 	}
 
 	// Check for unstaged changes
 	unstagedOutput, err := r.git.GitOutput("diff", "--name-only")
 	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
-		warnings = append(warnings, "This will preserve unstaged changes")
+		warnings = append(warnings, "Warning: This will discard unstaged changes")
 	}
 
-	// Use soft reset to preserve working directory and staging area
-	undoCommand := fmt.Sprintf("git reset --soft %s", parentCommit)
+	// Use hard reset to restore both commit state and working directory
+	undoCommand := fmt.Sprintf("git reset --hard %s", parentCommit)
 
 	// Safely truncate commit hash
 	shortHash := getShortHash(currentHead)
 	description := fmt.Sprintf("Remove revert commit %s", shortHash)
 
-	return NewUndoCommand(r.git, undoCommand, description, warnings...), nil
+	return []*UndoCommand{NewUndoCommand(r.git, undoCommand, description, warnings...)}, nil
 }

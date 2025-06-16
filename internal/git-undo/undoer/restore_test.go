@@ -59,7 +59,7 @@ func TestRestoreUndoer_GetUndoCommand(t *testing.T) {
 
 			restoreUndoer := undoer.NewRestoreUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := restoreUndoer.GetUndoCommand()
+			undoCmds, err := restoreUndoer.GetUndoCommands()
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -68,9 +68,9 @@ func TestRestoreUndoer_GetUndoCommand(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, undoCmd)
-				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
-				assert.Equal(t, tt.expectedDesc, undoCmd.Description)
+				require.Len(t, undoCmds, 1)
+				assert.Equal(t, tt.expectedCmd, undoCmds[0].Command)
+				assert.Equal(t, tt.expectedDesc, undoCmds[0].Description)
 			}
 
 			mockGit.AssertExpectations(t)
