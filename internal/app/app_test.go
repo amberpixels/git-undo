@@ -119,12 +119,17 @@ func (s *GitTestSuite) TestUndoAdd() {
 
 // TestSequentialUndo tests multiple undo operations in sequence.
 func (s *GitTestSuite) TestSequentialUndo() {
-	s.T().Skip("TODO FIX ME ")
+	// Setup: Create an initial base commit so we're not working from the root commit
+	initialFile := filepath.Join(s.GetRepoDir(), "initial.txt")
+	err := os.WriteFile(initialFile, []byte("initial content"), 0644)
+	s.Require().NoError(err)
+	s.Git("add", filepath.Base(initialFile))
+	s.Git("commit", "-m", "Initial base commit")
 
 	// Create test files
 	file1 := filepath.Join(s.GetRepoDir(), "file1.txt")
 	file2 := filepath.Join(s.GetRepoDir(), "file2.txt")
-	err := os.WriteFile(file1, []byte("content1"), 0644)
+	err = os.WriteFile(file1, []byte("content1"), 0644)
 	s.Require().NoError(err)
 	err = os.WriteFile(file2, []byte("content2"), 0644)
 	s.Require().NoError(err)
@@ -145,6 +150,7 @@ func (s *GitTestSuite) TestSequentialUndo() {
 	s.gitUndo()
 	status = s.RunCmd("git", "status", "--porcelain")
 	s.Contains(status, "A  file2.txt", "file2.txt should be staged after undoing second commit")
+	s.NotContains(status, "A  file1.txt", "file1.txt should not be staged after undoing second commit")
 
 	// Second undo: should unstage file2.txt
 	s.gitUndo()
@@ -174,12 +180,12 @@ func (s *GitTestSuite) TestUndoLog() {
 
 	// Perform some git operations to generate log entries
 	s.Git("add", filepath.Base(testFile)) // Use relative path for git commands
-	s.Git("commit", "-m", "'First commit'")
+	s.Git("commit", "-m", "First commit")
 
 	// Check that log command works and shows output
 	log := s.gitUndoLog()
 	s.NotEmpty(log, "Log should not be empty")
-	s.Contains(log, "git commit -m 'First commit'", "Log should contain commit command")
+	s.Contains(log, "git commit -m First commit", "Log should contain commit command")
 	s.Contains(log, "git add test.txt", "Log should contain add command")
 	s.Contains(log, "|feature-branch|", "Log should contain branch name")
 

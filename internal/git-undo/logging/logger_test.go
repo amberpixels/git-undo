@@ -28,7 +28,7 @@ func (m *MockGitRefSwitcher) SwitchRef(ref string) {
 
 func NewMockGitHelper() *MockGitRefSwitcher {
 	return &MockGitRefSwitcher{
-		currentRef: "main",
+		currentRef: logging.RefMain.String(),
 	}
 }
 
@@ -87,7 +87,7 @@ func TestLogger_E2E(t *testing.T) {
 	entry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
 	assert.Equal(t, commands[4].cmd, entry.Command)
-	assert.Equal(t, "feature/test", entry.Ref)
+	assert.Equal(t, "feature/test", entry.Ref.String())
 
 	// 3. Toggle the latest entry as undoed
 	t.Log("Toggling latest entry as undoed...")
@@ -106,12 +106,12 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 6. Switch to main branch and get its latest entry
 	t.Log("Getting latest entry from main branch...")
-	SwitchRef(mgc, "main")
+	SwitchRef(mgc, logging.RefMain.String())
 
 	mainEntry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
 	assert.Equal(t, commands[1].cmd, mainEntry.Command)
-	assert.Equal(t, "main", mainEntry.Ref)
+	assert.Equal(t, logging.RefMain, mainEntry.Ref)
 
 	// 7. Test entry parsing
 	t.Log("Testing entry parsing...")
@@ -277,4 +277,276 @@ func testNormalizeCommand(t *testing.T, cmd string) string {
 	}
 
 	return normalized
+}
+
+// TestCommitQuoteNormalizationIssue reproduces the bug where git commit commands
+// with different quote patterns create duplicate log entries.
+func TestCommitQuoteNormalizationIssue(t *testing.T) {
+	t.Log("Testing commit command quote normalization issue")
+
+	// Commands that should normalize to the same thing
+	quotedCmd := `git commit -m "Add file2.txt"`
+	unquotedCmd := `git commit -m Add file2.txt`
+
+	t.Logf("Quoted command: %s", quotedCmd)
+	t.Logf("Unquoted command: %s", unquotedCmd)
+
+	// Test normalization
+	quotedNorm := testNormalizeCommand(t, quotedCmd)
+	unquotedNorm := testNormalizeCommand(t, unquotedCmd)
+
+	t.Logf("Quoted normalized: %s", quotedNorm)
+	t.Logf("Unquoted normalized: %s", unquotedNorm)
+
+	// They should normalize to the same thing
+	assert.Equal(t, quotedNorm, unquotedNorm, "Both commands should normalize to the same form")
+
+	// Test with more complex scenarios
+	testCases := []struct {
+		name     string
+		commands []string
+	}{
+		{
+			name: "Basic commit messages",
+			commands: []string{
+				`git commit -m "test message"`,
+				`git commit -m 'test message'`,
+				`git commit -m test message`,
+			},
+		},
+		{
+			name: "Messages with spaces",
+			commands: []string{
+				`git commit -m "Add file2.txt"`,
+				`git commit -m 'Add file2.txt'`,
+				`git commit -m Add file2.txt`,
+			},
+		},
+		{
+			name: "Verbose flag variations",
+			commands: []string{
+				`git commit --verbose -m "commit f2"`,
+				`git commit -m "commit f2"`,
+				`git commit -m commit f2`,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var normalizedForms []string
+			for _, cmd := range tc.commands {
+				norm := testNormalizeCommand(t, cmd)
+				normalizedForms = append(normalizedForms, norm)
+				t.Logf("Command: %s -> Normalized: %s", cmd, norm)
+			}
+
+			// All normalized forms should be identical
+			for i := 1; i < len(normalizedForms); i++ {
+				assert.Equal(t, normalizedForms[0], normalizedForms[i],
+					"Commands should normalize to the same form")
+			}
+		})
+	}
+}
+
+// TestActualDuplicateLogging tests that deduplication actually works in practice.
+func TestActualDuplicateLogging(t *testing.T) {
+	t.Log("Testing actual duplicate logging scenario that reproduces BATS failure")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Test the exact scenario from the BATS test output:
+	// One command has quotes, one doesn't, but they represent the same git operation
+	quotedCmd := `git commit -m "Add file2.txt"`
+	unquotedCmd := `git commit -m Add file2.txt`
+
+	t.Logf("Testing commands:")
+	t.Logf("  1. %s", quotedCmd)
+	t.Logf("  2. %s", unquotedCmd)
+
+	// Simulate different hook environments
+	oldMarker := os.Getenv("GIT_UNDO_GIT_HOOK_MARKER")
+	oldInternal := os.Getenv("GIT_UNDO_INTERNAL_HOOK")
+	oldHookName := os.Getenv("GIT_HOOK_NAME")
+	defer func() {
+		// Restore environment
+		if oldMarker != "" {
+			t.Setenv("GIT_UNDO_GIT_HOOK_MARKER", oldMarker)
+		} else {
+			os.Unsetenv("GIT_UNDO_GIT_HOOK_MARKER")
+		}
+		if oldInternal != "" {
+			t.Setenv("GIT_UNDO_INTERNAL_HOOK", oldInternal)
+		} else {
+			os.Unsetenv("GIT_UNDO_INTERNAL_HOOK")
+		}
+		if oldHookName != "" {
+			t.Setenv("GIT_HOOK_NAME", oldHookName)
+		} else {
+			os.Unsetenv("GIT_HOOK_NAME")
+		}
+	}()
+
+	// First: Git hook logs the quoted version
+	t.Setenv("GIT_UNDO_GIT_HOOK_MARKER", "1")
+	t.Setenv("GIT_UNDO_INTERNAL_HOOK", "1")
+	t.Setenv("GIT_HOOK_NAME", "post-commit")
+
+	err := lgr.LogCommand(quotedCmd)
+	require.NoError(t, err)
+
+	// Second: Shell hook logs the unquoted version
+	t.Setenv("GIT_UNDO_GIT_HOOK_MARKER", "")
+	t.Setenv("GIT_UNDO_INTERNAL_HOOK", "1")
+	t.Setenv("GIT_HOOK_NAME", "")
+
+	err = lgr.LogCommand(unquotedCmd)
+	require.NoError(t, err)
+
+	// Check log content - should have only ONE entry due to deduplication
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.String()
+
+	t.Logf("Log content:\n%s", content)
+
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		lines = []string{} // Empty file
+	}
+
+	// This test should FAIL initially, showing the bug
+	// After we fix it, this should pass
+	assert.Len(t, lines, 1, "Should have exactly 1 log entry due to deduplication, but got: %v", lines)
+
+	if len(lines) > 1 {
+		t.Logf("BUG REPRODUCED: Found %d entries when expecting 1:", len(lines))
+		for i, line := range lines {
+			t.Logf("  Entry %d: %s", i+1, line)
+		}
+	}
+}
+
+// TestGitBackToggleBehavior tests that git-back can toggle back and forth
+// between branches even after its own undoed entries.
+func TestGitBackToggleBehavior(t *testing.T) {
+	t.Log("Testing git-back toggle behavior with undoed checkout entries")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "another-branch")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Simulate the exact scenario from the failing BATS test:
+	// Start on another-branch, simulate multiple git-back calls that mark checkouts as undoed
+
+	// 1. First checkout to feature-branch
+	err := lgr.LogCommand("git checkout feature-branch")
+	require.NoError(t, err)
+	SwitchRef(mgc, "feature-branch")
+
+	// 2. git-back call 1: Find and mark the checkout as undoed
+	entry1, err := lgr.GetLastCheckoutSwitchEntry(logging.RefAny)
+	require.NoError(t, err)
+	require.NotNil(t, entry1)
+	assert.Equal(t, "git checkout feature-branch", entry1.Command)
+
+	err = lgr.ToggleEntry(entry1.GetIdentifier())
+	require.NoError(t, err)
+	SwitchRef(mgc, "another-branch")
+
+	// 3. Checkout to main
+	err = lgr.LogCommand("git checkout main")
+	require.NoError(t, err)
+	SwitchRef(mgc, "main")
+
+	// 4. git-back call 2: Should find the checkout to main and mark it as undoed
+	entry2, err := lgr.GetLastCheckoutSwitchEntry(logging.RefAny)
+	require.NoError(t, err)
+	require.NotNil(t, entry2)
+	assert.Equal(t, "git checkout main", entry2.Command)
+
+	err = lgr.ToggleEntry(entry2.GetIdentifier())
+	require.NoError(t, err)
+	SwitchRef(mgc, "another-branch")
+
+	// 5. Add some other activity to make the log more complex
+	err = lgr.LogCommand("git add unstaged.txt")
+	require.NoError(t, err)
+
+	// 6. Current implementation fails
+	entry3, err := lgr.GetLastCheckoutSwitchEntry(logging.RefAny)
+	require.NoError(t, err)
+	assert.Nil(t, entry3, "Current implementation should fail to find checkout when all are undoed")
+
+	// 7. But new method should work
+	entry4, err := lgr.GetLastCheckoutSwitchEntryForToggle(logging.RefAny)
+	require.NoError(t, err)
+	assert.NotNil(t, entry4, "New method should find checkout command even if undoed")
+	if entry4 != nil {
+		t.Logf("Found checkout entry: %s (undoed: %v)", entry4.Command, entry4.Undoed)
+	}
+
+	// Check the log to see what's in there
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.String()
+	t.Logf("Log content:\n%s", content)
+}
+
+// TestGitBackFindAnyCheckout tests that git-back can find checkout commands
+// regardless of their undoed status.
+func TestGitBackFindAnyCheckout(t *testing.T) {
+	t.Log("Testing git-back can find any checkout command for toggle behavior")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Simple scenario: log some checkouts and test finding them
+	err := lgr.LogCommand("git checkout feature-1")
+	require.NoError(t, err)
+
+	err = lgr.LogCommand("git checkout feature-2")
+	require.NoError(t, err)
+
+	err = lgr.LogCommand("git add file.txt") // Non-checkout command
+	require.NoError(t, err)
+
+	// Test the new method can find the latest checkout
+	entry, err := lgr.GetLastCheckoutSwitchEntryForToggle(logging.RefAny)
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	assert.Equal(t, "git checkout feature-2", entry.Command)
+	assert.False(t, entry.Undoed)
+
+	// Mark it as undoed
+	err = lgr.ToggleEntry(entry.GetIdentifier())
+	require.NoError(t, err)
+
+	// Traditional method should not find it now
+	entry2, err := lgr.GetLastCheckoutSwitchEntry(logging.RefAny)
+	require.NoError(t, err)
+	require.NotNil(t, entry2)
+	assert.Equal(t, "git checkout feature-1", entry2.Command) // Should find the previous one
+
+	// But new method should still find the latest one (even though undoed)
+	entry3, err := lgr.GetLastCheckoutSwitchEntryForToggle(logging.RefAny)
+	require.NoError(t, err)
+	require.NotNil(t, entry3)
+	assert.Equal(t, "git checkout feature-2", entry3.Command)
+	assert.True(t, entry3.Undoed) // Should be marked as undoed
+
+	t.Log("✅ git-back can successfully find checkout commands for toggle behavior")
 }

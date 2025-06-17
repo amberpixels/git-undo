@@ -15,10 +15,10 @@ type ResetUndoer struct {
 
 var _ Undoer = &ResetUndoer{}
 
-// GetUndoCommand returns the command that would undo the reset operation.
+// GetUndoCommands returns the commands that would undo the reset operation.
 //
 //nolint:goconst // we're having lot of string git commands here
-func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
+func (r *ResetUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// First, get the current HEAD to know where we are now
 	//TODO: do we actually need HEAD here?
 	_, err := r.git.GitOutput("rev-parse", "HEAD")
@@ -90,7 +90,7 @@ func (r *ResetUndoer) GetUndoCommand() (*UndoCommand, error) {
 		return nil, fmt.Errorf("%w: unsupported reset mode: %s", ErrUndoNotSupported, resetMode)
 	}
 
-	return NewUndoCommand(r.git, undoCommand, description, warnings...), nil
+	return []*UndoCommand{NewUndoCommand(r.git, undoCommand, description, warnings...)}, nil
 }
 
 // getResetMode determines the reset mode from the original command arguments.

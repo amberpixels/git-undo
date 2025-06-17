@@ -74,7 +74,7 @@ func TestTagUndoer_GetUndoCommand(t *testing.T) {
 
 			tagUndoer := undoer.NewTagUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := tagUndoer.GetUndoCommand()
+			undoCmds, err := tagUndoer.GetUndoCommands()
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -83,9 +83,9 @@ func TestTagUndoer_GetUndoCommand(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, undoCmd)
-				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
-				assert.Equal(t, tt.expectedDesc, undoCmd.Description)
+				require.Len(t, undoCmds, 1)
+				assert.Equal(t, tt.expectedCmd, undoCmds[0].Command)
+				assert.Equal(t, tt.expectedDesc, undoCmds[0].Description)
 			}
 
 			mockGit.AssertExpectations(t)

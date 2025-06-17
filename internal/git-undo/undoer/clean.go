@@ -15,8 +15,8 @@ type CleanUndoer struct {
 
 var _ Undoer = &CleanUndoer{}
 
-// GetUndoCommand returns the command that would undo the clean operation.
-func (c *CleanUndoer) GetUndoCommand() (*UndoCommand, error) {
+// GetUndoCommands returns the commands that would undo the clean operation.
+func (c *CleanUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Git clean is inherently destructive and removes untracked files permanently.
 	// Unlike other git operations, once files are cleaned, they cannot be recovered
 	// from git's internal state since they were never tracked.

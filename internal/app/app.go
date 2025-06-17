@@ -69,6 +69,7 @@ func NewAppGiBack(version string, verbose, dryRun bool) *App {
 // ANSI escape code for gray color.
 const (
 	yellowColor = "\033[33m"
+	orangeColor = "\033[38;5;208m"
 	grayColor   = "\033[90m"
 	redColor    = "\033[31m"
 	resetColor  = "\033[0m"
@@ -108,9 +109,14 @@ func (a *App) logDebugf(format string, args ...any) {
 	_, _ = fmt.Fprintf(os.Stderr, yellowColor+a.getAppName()+" ⚙️: "+grayColor+format+resetColor+"\n", args...)
 }
 
-// logWarnf writes error messages to stderr.
+// logErrorf writes error messages to stderr.
+func (a *App) logErrorf(format string, args ...any) {
+	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌️: "+grayColor+format+resetColor+"\n", args...)
+}
+
+// logWarnf writes warning (soft error) messages to stderr.
 func (a *App) logWarnf(format string, args ...any) {
-	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌: "+grayColor+format+resetColor+"\n", args...)
+	_, _ = fmt.Fprintf(os.Stderr, orangeColor+a.getAppName()+" ⚠️: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // logInfof writes info messages to stderr.
@@ -168,7 +174,7 @@ func (a *App) Run(args []string) (err error) {
 		// Get the last undoed entry (from current reference)
 		lastEntry, err := lgr.GetLastEntry()
 		if err != nil {
-			a.logWarnf("something wrong with the log: %v", err)
+			a.logErrorf("something wrong with the log: %v", err)
 			return nil
 		}
 		if lastEntry == nil || !lastEntry.Undoed {
@@ -201,14 +207,27 @@ func (a *App) Run(args []string) (err error) {
 	// Get the last git command
 	var lastEntry *logging.Entry
 	if a.isBackMode {
-		// For git-back, only look for checkout/switch commands
-		lastEntry, err = lgr.GetLastCheckoutSwitchEntry()
+		// For git-back, look for the last checkout/switch command (including undoed ones for toggle behavior)
+		// We pass "any" to look across all refs, not just the current one
+		lastEntry, err = lgr.GetLastEntry(logging.RefAny)
 		if err != nil {
-			return fmt.Errorf("failed to get last checkout/switch command: %w", err)
+			return fmt.Errorf("failed to get last command: %w", err)
 		}
 		if lastEntry == nil {
-			a.logDebugf("no checkout/switch commands to undo")
+			a.logDebugf("no commands found")
 			return nil
+		}
+		// Check if the last command was a checkout or switch command
+		if !a.isCheckoutOrSwitchCommand(lastEntry.Command) {
+			// If not, try to find the last checkout/switch command (including undoed ones for toggle behavior)
+			lastEntry, err = lgr.GetLastCheckoutSwitchEntryForToggle(logging.RefAny)
+			if err != nil {
+				return fmt.Errorf("failed to get last checkout/switch command: %w", err)
+			}
+			if lastEntry == nil {
+				a.logDebugf("no checkout/switch commands to undo")
+				return nil
+			}
 		}
 	} else {
 		// For git-undo, get any regular entry
@@ -238,25 +257,37 @@ func (a *App) Run(args []string) (err error) {
 		u = undoer.New(lastEntry.Command, g)
 	}
 
-	// Get the undo command
-	undoCmd, err := u.GetUndoCommand()
+	// Get the undo commands
+	undoCmds, err := u.GetUndoCommands()
 	if err != nil {
 		return err
 	}
 
 	if a.dryRun {
-		a.logDebugf("Would run: %s\n", undoCmd.Command)
-		if len(undoCmd.Warnings) > 0 {
-			for _, warning := range undoCmd.Warnings {
-				a.logWarnf("%s", warning)
+		for _, undoCmd := range undoCmds {
+			a.logDebugf("Would run: %s\n", undoCmd.Command)
+			if len(undoCmd.Warnings) > 0 {
+				for _, warning := range undoCmd.Warnings {
+					a.logWarnf("%s", warning)
+				}
 			}
 		}
 		return nil
 	}
 
-	// Execute the undo command
-	if err := undoCmd.Exec(); err != nil {
-		return fmt.Errorf("failed to execute undo command %s via %s: %w", lastEntry.Command, undoCmd.Command, err)
+	// Execute the undo commands
+	for i, undoCmd := range undoCmds {
+		if err := undoCmd.Exec(); err != nil {
+			return fmt.Errorf("failed to execute undo command %d/%d %s via %s: %w",
+				i+1, len(undoCmds), lastEntry.Command, undoCmd.Command, err)
+		}
+		a.logDebugf("Successfully executed undo command %d/%d: %s via %s",
+			i+1, len(undoCmds), lastEntry.Command, undoCmd.Command)
+		if len(undoCmd.Warnings) > 0 {
+			for _, warning := range undoCmd.Warnings {
+				a.logWarnf("%s", warning)
+			}
+		}
 	}
 
 	// Mark the entry as undoed in the log
@@ -264,11 +295,11 @@ func (a *App) Run(args []string) (err error) {
 		a.logWarnf("Failed to mark command as undoed: %v", err)
 	}
 
-	a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmd.Command)
-	if len(undoCmd.Warnings) > 0 {
-		for _, warning := range undoCmd.Warnings {
-			a.logWarnf("%s", warning)
-		}
+	// Summary message for all commands
+	if len(undoCmds) == 1 {
+		a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmds[0].Command)
+	} else {
+		a.logDebugf("Successfully undid: %s via %d commands", lastEntry.Command, len(undoCmds))
 	}
 	return nil
 }

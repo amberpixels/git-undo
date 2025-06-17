@@ -168,7 +168,7 @@ type argsNormalizer func([]string) ([]string, error)
 var (
 	// normalizeCommitArgs normalizes commit command arguments to canonical form.
 	normalizeCommitArgs = func(args []string) ([]string, error) {
-		message := ""
+		var messageParts []string
 		amend := false
 
 		n := len(args)
@@ -181,17 +181,31 @@ var (
 			arg := args[i]
 			switch {
 			case arg == "-m" && i+1 < n:
-				// Extract message, removing quotes
-				message = strings.Trim(args[i+1], `"'`)
+				// Collect all arguments after -m that don't start with - as the message
+				// This handles both quoted and unquoted commit messages
+				for j := i + 1; j < n; j++ {
+					nextArg := args[j]
+					if strings.HasPrefix(nextArg, "-") {
+						break // Stop at next flag
+					}
+					// Remove quotes and add to message parts
+					cleanPart := strings.Trim(nextArg, `"'`)
+					messageParts = append(messageParts, cleanPart)
+				}
 
-				//nolint:ineffassign // We're fine with this
-				i++ // Skip the message argument
+				// Skip all the message arguments we just processed
+				j := i + 1
+				for j < n && !strings.HasPrefix(args[j], "-") {
+					j++
+				}
+				i = j - 1 //nolint:ineffassign,staticcheck // Skip processed arguments in the range loop
 			case arg == "--amend":
 				amend = true
 			case strings.HasPrefix(arg, "-m"):
 				// Handle -m"message" format
 				if len(arg) > 2 {
-					message = strings.Trim(arg[2:], `"'`)
+					cleanMsg := strings.Trim(arg[2:], `"'`)
+					messageParts = append(messageParts, cleanMsg)
 				}
 				// Ignore other flags like --verbose, --signoff, etc.
 			}
@@ -201,7 +215,9 @@ var (
 		var result []string
 		if amend {
 			result = append(result, "--amend")
-		} else if message != "" {
+		} else if len(messageParts) > 0 {
+			// Join all message parts with spaces to create the full message
+			message := strings.Join(messageParts, " ")
 			result = append(result, "-m", message)
 		}
 

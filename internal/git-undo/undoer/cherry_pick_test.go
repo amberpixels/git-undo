@@ -30,7 +30,7 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("", nil)
 			},
-			expectedCmd:  "git reset --soft xyz789",
+			expectedCmd:  "git reset --hard xyz789",
 			expectedDesc: "Remove cherry-pick commit def456",
 			expectError:  false,
 		},
@@ -54,12 +54,43 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 			expectError:  false,
 		},
 		{
+			name:    "fast-forward cherry-pick (merge in reflog)",
+			command: "git cherry-pick abc123",
+			setupMock: func(m *MockGitExec) {
+				m.On("GitOutput", "rev-parse", "HEAD").Return("def456", nil)
+				m.On("GitOutput", "rev-parse", "--verify", "CHERRY_PICK_HEAD").Return("", errors.New("not found"))
+				m.On("GitOutput", "reflog", "-1", "--format=%s").Return("merge abc123", nil)
+				m.On("GitOutput", "rev-parse", "HEAD~1").Return("xyz789", nil)
+				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
+				m.On("GitOutput", "diff", "--name-only").Return("", nil)
+			},
+			expectedCmd:  "git reset --hard xyz789",
+			expectedDesc: "Remove cherry-pick commit def456",
+			expectError:  false,
+		},
+		{
+			name:    "cherry-pick with commit in reflog",
+			command: "git cherry-pick abc123",
+			setupMock: func(m *MockGitExec) {
+				m.On("GitOutput", "rev-parse", "HEAD").Return("def456", nil)
+				m.On("GitOutput", "rev-parse", "--verify", "CHERRY_PICK_HEAD").Return("", errors.New("not found"))
+				m.On("GitOutput", "reflog", "-1", "--format=%s").
+					Return("commit (cherry-pick): Cherry-pick target commit", nil)
+				m.On("GitOutput", "rev-parse", "HEAD~1").Return("xyz789", nil)
+				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
+				m.On("GitOutput", "diff", "--name-only").Return("", nil)
+			},
+			expectedCmd:  "git reset --hard xyz789",
+			expectedDesc: "Remove cherry-pick commit def456",
+			expectError:  false,
+		},
+		{
 			name:    "non-cherry-pick commit",
 			command: "git cherry-pick abc123",
 			setupMock: func(m *MockGitExec) {
 				m.On("GitOutput", "rev-parse", "HEAD").Return("def456", nil)
 				m.On("GitOutput", "rev-parse", "--verify", "CHERRY_PICK_HEAD").Return("", errors.New("not found"))
-				m.On("GitOutput", "reflog", "-1", "--format=%s").Return("commit: regular message", nil)
+				m.On("GitOutput", "reflog", "-1", "--format=%s").Return("rebase: regular operation", nil)
 				m.On("GitOutput", "log", "-1", "--format=%s", "HEAD").Return("Regular commit", nil)
 			},
 			expectError:   true,
@@ -77,7 +108,7 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 
 			cherryPickUndoer := undoer.NewCherryPickUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := cherryPickUndoer.GetUndoCommand()
+			undoCmds, err := cherryPickUndoer.GetUndoCommands()
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -86,9 +117,9 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, undoCmd)
-				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
-				assert.Equal(t, tt.expectedDesc, undoCmd.Description)
+				require.Len(t, undoCmds, 1)
+				assert.Equal(t, tt.expectedCmd, undoCmds[0].Command)
+				assert.Equal(t, tt.expectedDesc, undoCmds[0].Description)
 			}
 
 			mockGit.AssertExpectations(t)

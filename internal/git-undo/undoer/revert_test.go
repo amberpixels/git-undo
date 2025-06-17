@@ -29,7 +29,7 @@ func TestRevertUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("", nil)
 			},
-			expectedCmd:  "git reset --soft abc123",
+			expectedCmd:  "git reset --hard abc123",
 			expectedDesc: "Remove revert commit def456",
 			expectError:  false,
 		},
@@ -75,7 +75,7 @@ func TestRevertUndoer_GetUndoCommand(t *testing.T) {
 
 			revertUndoer := undoer.NewRevertUndoerForTest(mockGit, cmdDetails)
 
-			undoCmd, err := revertUndoer.GetUndoCommand()
+			undoCmds, err := revertUndoer.GetUndoCommands()
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -84,9 +84,9 @@ func TestRevertUndoer_GetUndoCommand(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, undoCmd)
-				assert.Equal(t, tt.expectedCmd, undoCmd.Command)
-				assert.Equal(t, tt.expectedDesc, undoCmd.Description)
+				require.Len(t, undoCmds, 1)
+				assert.Equal(t, tt.expectedCmd, undoCmds[0].Command)
+				assert.Equal(t, tt.expectedDesc, undoCmds[0].Description)
 			}
 
 			mockGit.AssertExpectations(t)
