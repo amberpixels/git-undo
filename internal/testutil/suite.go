@@ -32,6 +32,12 @@ func (s *GitTestSuite) SetupSuite() {
 
 	// Initialize git repository
 	s.RunCmd("git", "init", ".")
+
+	// Disable git hooks during testing to avoid conflicts with simulated hooks
+	// Create a local hooks directory that's empty
+	localHooksDir := filepath.Join(s.repoDir, ".git", "hooks")
+	s.RunCmd("git", "config", "core.hooksPath", localHooksDir)
+
 	s.RunCmd("git", "commit", "--allow-empty", "-m", "init")
 }
 

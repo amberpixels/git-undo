@@ -69,6 +69,7 @@ func NewAppGiBack(version string, verbose, dryRun bool) *App {
 // ANSI escape code for gray color.
 const (
 	yellowColor = "\033[33m"
+	orangeColor = "\033[38;5;208m"
 	grayColor   = "\033[90m"
 	redColor    = "\033[31m"
 	resetColor  = "\033[0m"
@@ -108,9 +109,14 @@ func (a *App) logDebugf(format string, args ...any) {
 	_, _ = fmt.Fprintf(os.Stderr, yellowColor+a.getAppName()+" ⚙️: "+grayColor+format+resetColor+"\n", args...)
 }
 
-// logWarnf writes error messages to stderr.
+// logErrorf writes error messages to stderr.
+func (a *App) logErrorf(format string, args ...any) {
+	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌️: "+grayColor+format+resetColor+"\n", args...)
+}
+
+// logWarnf writes warning (soft error) messages to stderr.
 func (a *App) logWarnf(format string, args ...any) {
-	_, _ = fmt.Fprintf(os.Stderr, redColor+a.getAppName()+" ❌: "+grayColor+format+resetColor+"\n", args...)
+	_, _ = fmt.Fprintf(os.Stderr, orangeColor+a.getAppName()+" ⚠️: "+grayColor+format+resetColor+"\n", args...)
 }
 
 // logInfof writes info messages to stderr.
@@ -168,7 +174,7 @@ func (a *App) Run(args []string) (err error) {
 		// Get the last undoed entry (from current reference)
 		lastEntry, err := lgr.GetLastEntry()
 		if err != nil {
-			a.logWarnf("something wrong with the log: %v", err)
+			a.logErrorf("something wrong with the log: %v", err)
 			return nil
 		}
 		if lastEntry == nil || !lastEntry.Undoed {
