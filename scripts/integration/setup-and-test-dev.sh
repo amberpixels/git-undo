@@ -23,4 +23,4 @@ cd /home/testuser
 echo " Running integration tests..."
 echo "================================================================================"
 echo ""
-bats integration-test.bats #--filter "3A:"
+bats integration-test.bats #--filter "5A:" # <- uncomment to run a specific test

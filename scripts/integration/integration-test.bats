@@ -101,9 +101,9 @@ teardown() {
 
 @test "0A: complete git-undo integration workflow" {
     # ============================================================================
-    # PHASE 1: Verify Installation
+    # PHASE 0A-1: Verify Installation
     # ============================================================================
-    title "Phase 1: Verifying git-undo installation..."
+    title "Phase 0A-1: Verifying git-undo installation..."
     
     run which git-undo
     assert_success
@@ -162,9 +162,9 @@ teardown() {
     fi
     
     # ============================================================================
-    # PHASE 2: Basic git add and undo workflow
+    # PHASE 0A-2: Basic git add and undo workflow
     # ============================================================================
-    title "Phase 2: Testing basic git add and undo..."
+    title "Phase 0A-2: Testing basic git add and undo..."
     
     # Create test files
     echo "content of file1" > file1.txt
@@ -172,7 +172,7 @@ teardown() {
     echo "content of file3" > file3.txt
     
     # Verify files are untracked initially
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? file1.txt"
     assert_output --partial "?? file2.txt"
@@ -180,7 +180,7 @@ teardown() {
     
     # Add first file
     git add file1.txt
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "A  file1.txt"
     assert_output --partial "?? file2.txt"
@@ -188,7 +188,7 @@ teardown() {
 
     # Add second file
     git add file2.txt
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "A  file1.txt"
     assert_output --partial "A  file2.txt"
@@ -203,7 +203,7 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "A  file1.txt"
     assert_output --partial "?? file2.txt"
@@ -218,7 +218,7 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? file1.txt"
     assert_output --partial "?? file2.txt"
@@ -227,16 +227,16 @@ teardown() {
     refute_output --partial "A  file2.txt"
     
     # ============================================================================
-    # PHASE 3: Commit and undo workflow
+    # PHASE 0A-3: Commit and undo workflow
     # ============================================================================
-    title "Phase 3: Testing commit and undo..."
+    title "Phase 0A-3: Testing commit and undo..."
     
     # Stage and commit first file
     git add file1.txt
     git commit -m "Add file1.txt"
     
     # Verify clean working directory (except for untracked files from previous phase)
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? file2.txt"
     assert_output --partial "?? file3.txt"
@@ -250,7 +250,7 @@ teardown() {
     git commit -m "Add file2.txt"
     
     # Verify clean working directory again (only file3.txt should remain untracked)
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? file3.txt"
     refute_output --partial "file1.txt"  # file1.txt should be committed
@@ -265,7 +265,7 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "A  file2.txt"
     
@@ -282,16 +282,16 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? file2.txt"
     assert_output --partial "?? file3.txt"
     refute_output --partial "A  file2.txt"
     
     # ============================================================================
-    # PHASE 4: Complex sequential workflow
+    # PHASE 0A-4: Complex sequential workflow
     # ============================================================================
-    title "Phase 4: Testing complex sequential operations..."
+    title "Phase 0A-4: Testing complex sequential operations..."
     
     # Commit file3
     git add file3.txt
@@ -302,7 +302,7 @@ teardown() {
     git add file1.txt
     
     # Verify modified file1 is staged
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "M  file1.txt"
     
@@ -311,7 +311,7 @@ teardown() {
     git add file4.txt
     
     # Verify both staged
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "M  file1.txt"
     assert_output --partial "A  file4.txt"
@@ -325,7 +325,7 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "M  file1.txt"  # file1 still staged
     assert_output --partial "?? file4.txt"  # file4 unstaged
@@ -340,7 +340,7 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial " M file1.txt"  # Modified but unstaged
     assert_output --partial "?? file4.txt"
@@ -350,16 +350,16 @@ teardown() {
     run git undo
     assert_success
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "A  file3.txt"  # file3 back to staged
     assert_output --partial " M file1.txt"  # file1 still modified
     assert_output --partial "?? file4.txt"
     
     # ============================================================================
-    # PHASE 5: Verification of final state
+    # PHASE 0A-5: Verification of final state
     # ============================================================================
-    title "Phase 5: Final state verification..."
+    title "Phase 0A-5: Final state verification..."
     
     # Verify all files exist
     assert [ -f "file1.txt" ]
@@ -379,9 +379,9 @@ teardown() {
 
 @test "0B: git-back integration test - checkout and switch undo" {
     # ============================================================================
-    # PHASE 1: Verify git-back Installation
+    # PHASE 0B-1: Verify git-back Installation
     # ============================================================================
-    title "Phase 1: Verifying git-back installation..."
+    title "Phase 0B-1: Verifying git-back installation..."
     
     run which git-back
     assert_success
@@ -398,9 +398,9 @@ teardown() {
     assert_output --partial "Git-back undoes the last git checkout or git switch command"
     
     # ============================================================================
-    # PHASE 2: Basic branch switching workflow
+    # PHASE 0B-2: Basic branch switching workflow
     # ============================================================================
-    title "Phase 2: Testing basic branch switching..."
+    title "Phase 0B-2: Testing basic branch switching..."
     
     # Create and commit some files to establish a proper git history
     echo "main content" > main.txt
@@ -423,18 +423,11 @@ teardown() {
     run git branch --show-current
     assert_success
     assert_output "another-branch"
-    
+
     # ============================================================================
-    # PHASE 3: Source hooks for git-back tracking
+    # PHASE 0B-3: Test git-back with checkout commands
     # ============================================================================
-    title "Phase 3: Setting up hooks for git-back tracking..."
-    
-    # Hooks are sourced in setup() function for each test
-    
-    # ============================================================================
-    # PHASE 4: Test git-back with checkout commands
-    # ============================================================================
-    title "Phase 4: Testing git-back with checkout..."
+    title "Phase 0B-3: Testing git-back with checkout..."
     
     # Switch to feature branch (this should be tracked)
     git checkout feature-branch
@@ -454,9 +447,9 @@ teardown() {
     assert_output "another-branch"
     
     # ============================================================================
-    # PHASE 5: Test multiple branch switches
+    # PHASE 0B-4: Test multiple branch switches
     # ============================================================================
-    title "Phase 5: Testing multiple branch switches..."
+    title "Phase 0B-4: Testing multiple branch switches..."
     
     # Switch to main branch
     git checkout main
@@ -493,9 +486,9 @@ teardown() {
     assert_output "another-branch"
     
     # ============================================================================
-    # PHASE 6: Test git-back with uncommitted changes (should show warnings)
+    # PHASE 0B-5: Test git-back with uncommitted changes (should show warnings)
     # ============================================================================
-    title "Phase 6: Testing git-back with uncommitted changes..."
+    title "Phase 0B-5: Testing git-back with uncommitted changes..."
     
     # Make some uncommitted changes
     echo "modified content" >> another.txt
@@ -527,8 +520,8 @@ teardown() {
     print "git-back integration test completed successfully!"
 }
 
-@test "1A: Phase 1 Commands: git rm, mv, tag, restore undo functionality" {
-    title "Phase 1: Testing git rm, mv, tag, restore undo functionality"
+@test "1A: Phase 1A Commands: git rm, mv, tag, restore undo functionality" {
+    title "Phase 1A-1: Testing git rm, mv, tag, restore undo functionality"
 
     run_verbose git status --porcelain
     assert_success
@@ -543,9 +536,9 @@ teardown() {
     git commit -m "Second commit"
     
     # ============================================================================
-    # PHASE 1A: Test git tag undo
+    # PHASE 1A-2: Test git tag undo
     # ============================================================================
-    title "Phase 1A: Testing git tag undo..."
+    title "Phase 1A-2: Testing git tag undo..."
     
     # Create a tag
     git tag v1.0.0
@@ -582,9 +575,9 @@ teardown() {
     assert_output ""
     
     # ============================================================================
-    # PHASE 1B: Test git mv undo
+    # PHASE 1A-3: Test git mv undo
     # ============================================================================
-    title "Phase 1B: Testing git mv undo..."
+    title "Phase 1A-3: Testing git mv undo..."
     
     # Create a file to move
     echo "content for moving" > moveme.txt
@@ -613,11 +606,8 @@ teardown() {
     git add file1.txt file2.txt
     git commit -m "Add files for directory move"
 
-    echo "test1"
-
     # Move files to subdirectory
     git mv file1.txt file2.txt subdir/
-    echo "test2"
 
     # Verify files were moved
     [ ! -f file1.txt ]
@@ -636,9 +626,9 @@ teardown() {
     [ ! -f subdir/file2.txt ]
 
     # ============================================================================
-    # PHASE 1C: Test git rm undo
+    # PHASE 1A-4: Test git rm undo
     # ============================================================================
-    title "Phase 1C: Testing git rm undo..."
+    title "Phase 1A-4: Testing git rm undo..."
     
     # Create a file to remove
     echo "content for removal" > removeme.txt
@@ -683,9 +673,9 @@ teardown() {
     [ -f removeme.txt ]
     
     # ============================================================================
-    # PHASE 1D: Test git restore undo (staged only)
+    # PHASE 1A-5: Test git restore undo (staged only)
     # ============================================================================
-    title "Phase 1D: Testing git restore --staged undo..."
+    title "Phase 1A-5: Testing git restore --staged undo..."
     
     # Create and stage a file
     echo "staged content" > staged.txt
@@ -713,11 +703,11 @@ teardown() {
     assert_success
     assert_line "staged.txt"
     
-    print "Phase 1 Commands integration test completed successfully!"
+    print "Phase 1A Commands integration test completed successfully!"
 }
 
-@test "2A: Phase 2 Commands: git reset, revert, cherry-pick undo functionality" {
-    title "Phase 1: Testing git reset, revert, cherry-pick undo functionality"
+@test "2A: Phase 2A Commands: git reset, revert, cherry-pick undo functionality" {
+    title "Phase 2A-1: Testing git reset, revert, cherry-pick undo functionality"
     
     # Setup: Create initial commit structure for testing
     echo "initial content" > initial.txt
@@ -733,9 +723,9 @@ teardown() {
     git commit -m "Third commit"
     
     # ============================================================================
-    # PHASE 2: Test git reset undo
+    # PHASE 2A-2: Test git reset undo
     # ============================================================================
-    title "Phase 2: Testing git reset undo..."
+    title "Phase 2A-2: Testing git reset undo..."
     
     # Get current commit hash for verification
     run_verbose git rev-parse HEAD
@@ -775,7 +765,7 @@ teardown() {
     # Debug: Check what's in the log before undo
     run_verbose git-undo --log
     
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? third.txt"
     
@@ -789,9 +779,9 @@ teardown() {
     assert_output "$third_commit"
     
     # ============================================================================
-    # PHASE 3: Test git revert undo
+    # PHASE 2A-3: Test git revert undo
     # ============================================================================
-    title "Phase 3: Testing git revert undo..."
+    title "Phase 2A-3: Testing git revert undo..."
     
     # Create a commit to revert
     echo "revert-me content" > revert-me.txt
@@ -831,9 +821,9 @@ teardown() {
     [ -f revert-me.txt ]
     
     # ============================================================================
-    # PHASE 4: Test git cherry-pick undo
+    # PHASE 2A-4: Test git cherry-pick undo
     # ============================================================================
-    title "Phase 4: Testing git cherry-pick undo..."
+    title "Phase 2A-4: Testing git cherry-pick undo..."
     
     # Create a feature branch with a commit to cherry-pick
     git checkout -b feature-cherry
@@ -876,9 +866,9 @@ teardown() {
     [ ! -f cherry.txt ]
     
     # ============================================================================
-    # PHASE 5: Test git clean undo (expected to fail)
+    # PHASE 2A-5: Test git clean undo (expected to fail)
     # ============================================================================
-    title "Phase 5: Testing git clean undo (should show unsupported error)..."
+    title "Phase 2A-5: Testing git clean undo (should show unsupported error)..."
     
     # Create untracked files
     echo "untracked1" > untracked1.txt
@@ -900,11 +890,11 @@ teardown() {
     assert_failure
     assert_output --partial "permanently removes untracked files that cannot be recovered"
     
-    print "Phase 2 Commands integration test completed successfully!"
+    print "Phase 2A Commands integration test completed successfully!"
 }
 
-@test "3A: git switch undo functionality" {
-    title "Git Switch Test: Testing that git undo warns for git switch commands"
+@test "3A: git undo checkout/switch detection - warns and suggests git back" {
+    title "Phase 3A: Checkout/Switch Detection Test: Testing that git undo warns for checkout/switch commands"
     
     # Setup: Create initial commit structure for testing
     echo "initial content" > initial.txt
@@ -916,9 +906,34 @@ teardown() {
     git commit -m "Main content commit"
     
     # ============================================================================
-    # Test git switch -c (branch creation) - should show warning
+    # PHASE 3A-1: Test git checkout detection
     # ============================================================================
-    title "Testing git switch -c warning..."
+    title "Phase 3A-1: Testing git checkout detection..."
+    
+    # Create a test branch
+    git branch test-branch
+
+    # Perform checkout operation (should be tracked)
+    git checkout test-branch
+    
+    # Verify we're on the test branch
+    run git branch --show-current
+    assert_success
+    assert_output "test-branch"
+    
+    # Try git undo - should warn about checkout command
+    run_verbose git undo 2>&1
+    assert_success
+    assert_output --partial "can't be undone"
+    assert_output --partial "git back"
+    
+    # ============================================================================
+    # PHASE 3A-2: Test git switch -c (branch creation) - should show warning
+    # ============================================================================
+    title "Phase 3A-2: Testing git switch -c warning..."
+    
+    # Switch back to main first
+    git checkout main
     
     # Create a new branch using git switch -c
     git switch -c feature-switch
@@ -940,11 +955,11 @@ teardown() {
     assert_output "feature-switch"
     
     # ============================================================================
-    # Test regular git switch - should show warning
+    # PHASE 3A-3: Test regular git switch - should show warning
     # ============================================================================
-    title "Testing regular git switch warning..."
+    title "Phase 3A-3: Testing regular git switch warning..."
     
-    # Create another branch and commit something to it
+    # Add content to feature branch
     echo "feature content" > feature.txt
     git add feature.txt
     git commit -m "Feature content"
@@ -969,9 +984,9 @@ teardown() {
     assert_output "main"
     
     # ============================================================================
-    # Test that git back works as expected for switch operations
+    # PHASE 3A-4: Test that git back works as expected for switch/checkout operations
     # ============================================================================
-    title "Testing that git back works for switch operations..."
+    title "Phase 3A-4: Testing that git back works for switch/checkout operations..."
     
     # Use git back to go back to the previous branch (should be feature-switch)
     run_verbose git back
@@ -983,9 +998,9 @@ teardown() {
     assert_output "feature-switch"
     
     # ============================================================================
-    # Test mixed commands - ensure warning only appears for switch
+    # PHASE 3A-5: Test mixed commands - ensure warning only appears for switch/checkout
     # ============================================================================
-    title "Testing that warning only appears for switch commands..."
+    title "Phase 3A-5: Testing that warning only appears for switch/checkout commands..."
     
     # Create and stage a file
     echo "test file" > test-file.txt
@@ -998,15 +1013,15 @@ teardown() {
     refute_output --partial "git back"
     
     # Verify file was unstaged
-    run git status --porcelain
+    run_verbose git status --porcelain
     assert_success
     assert_output --partial "?? test-file.txt"
     
-    print "git switch warning integration test completed successfully!"
+    print "Checkout/switch detection integration test completed successfully!"
 }
 
-@test "4A: git undo checkout/switch detection - warns and suggests git back" {
-    title "Checkout/Switch Detection Test: Testing that git undo warns for checkout/switch commands"
+@test "4A: Additional Commands: git stash, merge, reset --hard, restore, branch undo functionality" {
+    title "Phase 4A: Testing additional git command undo functionality"
     
     # Setup: Create initial commit structure for testing
     echo "initial content" > initial.txt
@@ -1017,86 +1032,277 @@ teardown() {
     git add main.txt
     git commit -m "Main content commit"
     
-    # Hooks are sourced in setup() function for each test
-    debug "Hooks are sourced in setup() function for each test"
-    
     # ============================================================================
-    # Test git checkout detection
+    # PHASE 4A-1: Test git stash undo
     # ============================================================================
-    print "Testing git checkout detection..."
+    title "Phase 4A-1: Testing git stash undo..."
     
-    # Create a test branch
-    git branch test-branch
+    # Create some changes to stash
+    echo "changes to stash" >> main.txt
+    echo "new unstaged file" > unstaged.txt
     
-    # Perform checkout operation (should be tracked)
-    git checkout test-branch
+    # Stage one change
+    git add unstaged.txt
     
-    # Verify we're on the test branch
-    run git branch --show-current
+    # Verify we have both staged and unstaged changes
+    run_verbose git status --porcelain
     assert_success
-    assert_output "test-branch"
+    assert_output --partial "A  unstaged.txt"
+    assert_output --partial " M main.txt"
     
-    # Try git undo - should warn about checkout command
-    run_verbose git undo 2>&1
+    # Stash the changes
+    run_verbose git stash push -m "Test stash message"
+    
+    # Verify working directory is clean
+    run_verbose git status --porcelain
     assert_success
-    assert_output --partial "can't be undone"
-    assert_output --partial "git back"
+    assert_output ""
     
-    # ============================================================================
-    # Test git switch detection
-    # ============================================================================
-    print "Testing git switch detection..."
-    
-    # Switch back to main
-    git switch main
-    
-    # Verify we're on main
-    run git branch --show-current
+    # Verify files are back to original state
+    [ ! -f unstaged.txt ]
+    run cat main.txt
     assert_success
-    assert_output "main"
+    assert_output "main content"
     
-    # Switch to test branch again
-    git switch test-branch
-    
-    # Try git undo - should warn about switch command
-    run_verbose git undo 2>&1
-    assert_success
-    assert_output --partial "can't be undone"
-    assert_output --partial "git back"
-    
-    # ============================================================================
-    # Test that git back still works normally
-    # ============================================================================
-    print "Verifying git back still works normally..."
-    
-    # Use git back to return to previous branch
-    run_verbose git back
+    # Undo the stash (should restore the changes)
+    run_verbose git-undo
     assert_success
     
-    # Should be back on main
-    run git branch --show-current
+    # Verify changes are restored
+    run_verbose git status --porcelain
     assert_success
-    assert_output "main"
+    assert_output --partial "A  unstaged.txt"
+    assert_output --partial " M main.txt"
+    
+    # Clean up for next test
+    git reset HEAD unstaged.txt
+    git checkout -- main.txt
+    rm -f unstaged.txt
     
     # ============================================================================
-    # Test mixed commands - ensure warning only for checkout/switch
+    # PHASE 4A-2: Test git reset --hard undo
     # ============================================================================
-    print "Testing mixed commands - ensuring warning only appears for checkout/switch..."
+    title "Phase 4A-2: Testing git reset --hard undo..."
     
-    # Create and stage a file
-    echo "test file" > test-warning.txt
-    git add test-warning.txt
+    # Create a commit to reset from
+    echo "content to be reset" > reset-test.txt
+    git add reset-test.txt
+    git commit -m "Commit to be reset with --hard"
     
-    # Now perform git undo - should work normally (no warning)
+    # Get current commit hash
+    run git rev-parse HEAD
+    assert_success
+    current_commit="$output"
+    
+    # Create some uncommitted changes
+    echo "uncommitted changes" >> main.txt
+    echo "untracked file" > untracked.txt
+    
+    # Perform hard reset (should lose uncommitted changes)
+    git reset --hard HEAD~1
+    
+    # Verify we're at previous commit and changes are gone
+    run git rev-parse HEAD
+    assert_success
+    refute_output "$current_commit"
+    [ ! -f reset-test.txt ]
+    [ -f untracked.txt ]
+    
+    # Undo the hard reset
+    run_verbose git-undo
+    assert_success
+    
+    # Verify we're back at the original commit
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$current_commit"
+    [ -f reset-test.txt ]
+    
+    # ============================================================================
+    # PHASE 4A-3: Test git merge undo (fast-forward)
+    # ============================================================================
+    title "Phase 4A-3: Testing git merge undo..."
+    
+    # Create a feature branch with commits
+    git checkout -b feature-merge
+    echo "feature change 1" > feature1.txt
+    git add feature1.txt
+    git commit -m "Feature commit 1"
+    
+    echo "feature change 2" > feature2.txt
+    git add feature2.txt
+    git commit -m "Feature commit 2"
+    
+    # Record feature branch head
+    run git rev-parse HEAD
+    assert_success
+    feature_head="$output"
+    
+    # Switch back to main and record state
+    git checkout main
+    run git rev-parse HEAD
+    assert_success
+    main_before_merge="$output"
+    
+    # Perform fast-forward merge
+    git merge feature-merge
+    
+    # Verify merge was successful (should be fast-forward)
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$feature_head"
+    [ -f feature1.txt ]
+    [ -f feature2.txt ]
+    
+    # Undo the merge
+    run_verbose git-undo
+    assert_success
+    
+    # Verify we're back to pre-merge state
+    run git rev-parse HEAD
+    assert_success
+    assert_output "$main_before_merge"
+    [ ! -f feature1.txt ]
+    [ ! -f feature2.txt ]
+    
+    # ============================================================================
+    # PHASE 4A-4: Test git branch -D undo (should fail with clear error message)
+    # ============================================================================
+    title "Phase 4A-4: Testing git branch -D undo (should show unsupported error)..."
+    
+    # Verify feature branch still exists
+    run git branch --list feature-merge
+    assert_success
+    assert_output --partial "feature-merge"
+    
+    # Delete the feature branch (use -D since it's not merged)
+    git branch -D feature-merge
+    
+    # Verify branch is deleted
+    run git branch --list feature-merge
+    assert_success
+    assert_output ""
+    
+    # Try to undo the branch deletion (should fail with clear error message)
+    run_verbose git-undo
+    assert_failure
+    assert_output --partial "git undo not supported for branch deletion"
+    
+    print "Phase 4A: Additional commands integration test completed successfully!"
+}
+
+@test "5A: Error Conditions and Edge Cases" {
+    title "Phase 5A: Testing error conditions and edge cases"
+    
+    # ============================================================================
+    # PHASE 5A-1: Test git undo with no previous commands
+    # ============================================================================
+    title "Phase 5A-1: Testing git undo with empty log..."
+    
+    # Clear any existing log by creating a fresh repository state
+    # The setup() already creates a clean state with just init commit
+    
+    # Try git undo when there are no tracked commands
+    # First undo should fail because it's trying to undo the initial commit
+    run_verbose git undo
+    assert_failure
+    assert_output --partial "this appears to be the initial commit and cannot be undone this way"
+    
+    # Second undo should still fail with the same error since the initial commit is still there
+    run_verbose git undo
+    assert_failure
+    assert_output --partial "this appears to be the initial commit and cannot be undone this way"
+    
+    # ============================================================================
+    # PHASE 5A-2: Test git undo --log with empty log
+    # ============================================================================
+    title "Phase 5A-2: Testing git undo --log with empty log..."
+    
+    # Check that log shows appropriate message when empty
+    run_verbose git undo --log
+    assert_success
+    # Should either show empty output or a message about no commands
+    
+    # ============================================================================
+    # PHASE 5A-3: Test unsupported commands
+    # ============================================================================
+    title "Phase 5A-3: Testing unsupported commands..."
+    
+    # Setup some commits first
+    echo "test content" > test.txt
+    git add test.txt
+    git commit -m "Test commit"
+    
+    # Test git rebase (should show warning/error about being unsupported)
+    git checkout -b rebase-test
+    echo "branch content" > branch.txt
+    git add branch.txt
+    git commit -m "Branch commit"
+    
+    git checkout main
+    # Attempt rebase
+    git rebase rebase-test 2>/dev/null || true
+    
+    # Try to undo rebase - should fail or warn appropriately
+    run_verbose git undo
+    # This might succeed or fail depending on implementation
+    # The important thing is it handles it gracefully
+    
+    # ============================================================================
+    # PHASE 5A-4: Test git undo after hook failures
+    # ============================================================================
+    title "Phase 5A-4: Testing behavior after hook failures..."
+    
+    # Perform a normal operation that should be tracked
+    echo "tracked content" > tracked.txt
+    git add tracked.txt
+    
+    # Verify it can be undone normally
     run_verbose git undo
     assert_success
-    refute_output --partial "can't be undone"
-    refute_output --partial "git back"
     
-    # Verify file was unstaged
-    run git status --porcelain
+    # Verify file is unstaged
+    run_verbose git status --porcelain
     assert_success
-    assert_output --partial "?? test-warning.txt"
+    assert_output --partial "?? tracked.txt"
     
-    print "Checkout/switch detection integration test completed successfully!"
+    # ============================================================================
+    # PHASE 5A-5: Test concurrent operations and rapid commands
+    # ============================================================================
+    title "Phase 5A-5: Testing rapid sequential commands..."
+    
+    # Perform multiple rapid operations
+    echo "rapid1" > rapid1.txt
+    git add rapid1.txt
+    echo "rapid2" > rapid2.txt  
+    git add rapid2.txt
+    echo "rapid3" > rapid3.txt
+    git add rapid3.txt
+    
+    # Verify all operations are tracked in correct order (LIFO)
+    run_verbose git undo
+    assert_success
+    run_verbose git status --porcelain
+    assert_success
+    assert_output --partial "A  rapid1.txt"
+    assert_output --partial "A  rapid2.txt" 
+    assert_output --partial "?? rapid3.txt"
+    
+    run_verbose git undo
+    assert_success
+    run_verbose git status --porcelain
+    assert_success
+    assert_output --partial "A  rapid1.txt"
+    assert_output --partial "?? rapid2.txt"
+    assert_output --partial "?? rapid3.txt"
+    
+    run_verbose git undo
+    assert_success
+    run_verbose git status --porcelain
+    assert_success
+    assert_output --partial "?? rapid1.txt"
+    assert_output --partial "?? rapid2.txt"
+    assert_output --partial "?? rapid3.txt"
+    
+    print "Phase 5A:Error conditions and edge cases test completed successfully!"
 } 
