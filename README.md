@@ -14,7 +14,7 @@ git undo                           # Back to before commit, files still staged
 git undo                           # Back to before add, clean working directory
 ```
 
-## 2. `git back`: undo navigation commands e.g. `git checkout`, `git switch`:
+## 2. `git back`: undo navigation commands e.g. `git checkout/switch`:
 
 ```bash
 # Assume we're on main
