@@ -1,9 +1,8 @@
-# git-undo ✨
+# *git undo* 🥐 — a Git plugin that enables Ctrl+Z functionality 💫
 
 <p align="center">
   <img src="logo.png" alt="Logo" width="300"/><br>
 </p>
-<h3 align="center">Ctrl+Z for Git commands</h3>
 
 ## 1. `git undo`: one simple command to undo (almost) any Git operation:
 
@@ -60,6 +59,15 @@ cd git-undo
 ```
 
 **Requirements:** Git, Go ≥ 1.21, Bash/Zsh
+
+## Suggestions for aliases
+
+```bash
+alias gu="git undo"
+alias gub="git back"
+alias guu="git undo undo"
+alias gul="git undo --log | head"
+```
 
 ## Supported commands to be undo-ed:
 
