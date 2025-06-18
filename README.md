@@ -1,189 +1,144 @@
-# git-undo ⏪✨
+# git-undo
 
-*A universal "Ctrl + Z" for Git commands.* 🔄
+# **Ctrl+Z for Git commands**
 
-`git-undo` tracks every mutating Git command you run and can roll it back with a single `git undo` 🚀
-No reflog spelunking, no cherry‑picks—just instant reversal. ⚡
+## 1. `git undo`: one simple command to undo (almost) any Git operation:
 
-## Table of Contents
-1. [Introduction](#introduction)
-2. [Features](#features)
-3. [Installation](#installation)
-   - [cURL one‑liner](#curl-one-liner-preferred)
-   - [Manual clone](#manual-clone)
-   - [Shell‑hook integration](#shell-hook-integration)
-   - [Using go install](#using-go-install)
-4. [Quick Start](#quick-start)
-5. [Usage](#usage)
-6. [Supported Git Commands](#supported-git-commands)
-7. [Examples](#examples)
-8. [Development & Testing](#development--testing)
-9. [Contributing & Feedback](#contributing--feedback)
-10. [License](#license)
+```bash
+git add .
+git commit -m "oops, wrong files"
+git undo                           # Back to before commit, files still staged
+git undo                           # Back to before add, clean working directory
+```
 
----
+## 2. `git back`: undo navigation commands e.g. `git checkout`, `git switch`:
 
-## Introduction
-`git-undo` makes destructive Git operations painless to reverse.
-It records each mutating command (commit, add, merge, stash, …) per‑repository in a tiny log file inside `.git/git-undo/`,
-then generates the matching *anti‑command* when you call **`git undo`**.
+```bash
+# Assume we're on main
+git switch feature-branch
+git back # back to main
+git back # back to feature-branch
+```
 
-## Features
-- **One‑shot undo** for commits, adds, branches, stashes, merges, and more.
-- **Sequential undo / redo** - walk backward *or* forward through history.
-- **Smart guidance** - detects checkout/switch operations and suggests `git back` instead.
-- Verbose & dry‑run modes for full transparency.
-- Per‑repository command log you can inspect or clear at any time.
+## 3. `git undo undo` Undoed accidently? Undo it as well. (like Ctrl+Shift+Z)
 
-## Installation
+```bash
+git add .
+git commit -m "oops, wrong files"
+git undo                           # Back to before commit, files still staged
+git undo undo                      # Back to commited again
+```
 
-### Prerequisites
-* Git
-* Go ≥ 1.21 (auto‑upgrades to 1.24 via Go toolchain)
-* Zsh or Bash Shells (more shells coming soon)
+## 4. `git undo --dry-run`: see what would be undone:
 
-### cURL one‑liner *(preferred)*
+```bash
+# Make some changes
+git add file.txt
+git undo --dry-run # shows hint to run "git restore --staged ."
+git commit -m "test commit"
+git undo --dry-run # shows hint to run "git reset --soft HEAD~1"
+```
 
+## 5. Debug options: `git undo --verbose`, `git undo --log`
+
+Now you can use Git confidently, knowing any command is easily undoable.
+
+## Installation Options
+
+### One-liner (Recommended)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/amberpixels/git-undo/main/install.sh | bash
 ```
-
-### Manual clone
+### Manual Installation (useful for development, debugging, troubleshooting)
 ```bash
 git clone https://github.com/amberpixels/git-undo.git
 cd git-undo
 ./install.sh
 ```
 
-### Shell‑hook integration
-- For zsh:
-  - The installer drops [`scripts/git-undo-hook.zsh`](scripts/git-undo-hook.zsh) into `~/.config/git-undo/`
-and appends a `source` line to your `.zshrc`.
-- For bash:
-  - The installer drops [`scripts/git-undo-hook.bash`](scripts/git-undo-hook.bash) into `~/.config/git-undo/`
-and appends a `source` line to your `.bashrc` / `.bash_profile` (depending on your OS).
+**Requirements:** Git, Go ≥ 1.21, Bash/Zsh
 
-### Using go install
+## Supported commands to be undo-ed:
 
+| Git Command | How it's undone | Notes |
+|-------------|-----------------|-------|
+| **`git add`** | `git restore --staged <files>` or `git reset <files>` | Unstages files. Uses `git reset` if no HEAD exists |
+| **`git commit`** | `git reset --soft HEAD~1` | Keeps changes staged. Handles merge commits and tagged commits |
+| **`git branch <name>`** | `git branch -D <name>` | Deletes the created branch |
+| **`git checkout -b <name>`** | `git branch -D <name>` | Deletes branch created by checkout -b |
+| **`git switch -c <name>`** | `git branch -D <name>` | Deletes branch created by switch -c |
+| **`git switch <branch>`** | `git switch -` | Returns to previous branch |
+| **`git merge <branch>`** | `git reset --merge ORIG_HEAD` | Handles both fast-forward and merge commits |
+| **`git cherry-pick <commit>`** | `git reset --hard HEAD~1` | Removes cherry-picked commit |
+| **`git revert <commit>`** | `git reset --hard HEAD~1` | Removes revert commit |
+| **`git reset`** | `git reset <previous-head>` | Restores to previous HEAD position using reflog |
+| **`git stash` / `git stash push`** | `git stash pop` | Pops and removes the stash |
+| **`git rm <files>`** | `git restore --source=HEAD --staged --worktree <files>` | Restores removed files |
+| **`git rm --cached <files>`** | `git add <files>` | Re-adds files to index |
+| **`git mv <old> <new>`** | `git mv <new> <old>` | Reverses the move operation |
+| **`git tag <name>`** | `git tag -d <name>` | Deletes the created tag |
+| **`git restore --staged <files>`** | `git add <files>` | Re-stages the files |
+
+### Not Yet Supported (Returns helpful error message):
+
+| Git Command | Reason |
+|-------------|--------|
+| **`git checkout <branch>`** | Only `checkout -b` is supported (regular checkout navigation not undoable) |
+| **`git clean`** | Cannot recover deleted untracked files (would need pre-operation backup) |
+| **`git restore --worktree`** | Previous working tree state unknown |
+| **`git restore --source=<ref>`** | Previous state from specific reference unknown |
+| **`git stash pop/apply`** | Would need to re-stash, which is complex |
+| **Branch/tag deletion** | Cannot restore deleted branches/tags (would need backup) |
+
+## How It Works
+
+After installation both `shell hooks` and `git hooks` are installed, that track any git command and send them to `git-undo` (a git plugin) binary. There git commands are categorized and stored in a tiny log file (`.git/git-undo/commands`). Later, when calling `git undo` it reads the log and decide if it's possible (and how) to undo previous command.
+
+## Examples
+
+**Undo a merge:**
+```bash
+git merge feature-branch
+git undo                 # resets --merge ORIG_HEAD
+```
+
+**Undo adding specific files:**
+```bash
+git add file1.js file2.js
+git undo                 # unstages just those files
+```
+
+**Undo branch creation:**
+```bash
+git checkout -b new-feature
+git undo                 # deletes branch, returns to previous
+```
+
+### Self-Management
+
+Get the version information:
 ```bash
 go install github.com/amberpixels/git-undo/cmd/git-undo@latest
 ```
 
-## Quick Start
+Update to latest version:
 ```bash
-git add .
-git commit -m "oops"  # commit, then regret it
-git undo              # resets to HEAD~1, keeps changes staged (like Ctrl+Z)
-git undo              # undoes `git add .` as well
+git undo self update
 ```
 
-Need the commit back?
-```bash
-git undo undo      # redo last undo (like Ctrl+Shift+Z)
-```
-
-## Usage
-| Command              | Effect                                            |
-|----------------------|---------------------------------------------------|
-| `git undo`           | Roll back the last mutating Git command           |
-| `git undo undo`      | Re-roll back the last undoed command              |
-| `git undo --verbose` | Show the generated inverse command before running |
-| `git undo --dry-run` | Print what *would* be executed, do nothing        |
-| `git undo --log`     | Dump your logged command history                  |
-
-### Version Information
-
-Check the version of git-undo:
-
-```bash
-git undo version        # Standard version command
-git undo self version   # The same (just a consistent way for other `git undo self` commands)
-```
-
-The version detection works in the following priority:
-1. Git tag version (if in a git repository with tags)
-2. Build-time version (set during compilation)
-3. "unknown" (fallback)
-
-### Self-Management Commands
-
-Update git-undo to the latest version:
-
-```bash
-git undo self update 
-```
-
-Uninstall git-undo:
-
+Uninstall:
 ```bash
 git undo self uninstall
 ```
 
-## Supported Git Commands
-* `commit`
-* `add`
-* `branch`
-* `stash push`
-* `merge`
-* `checkout -b`
-* More on the way—PRs welcome!
+## Contributing
 
-## Examples
-Undo a merge commit:
-```bash
-git merge feature/main
-git undo          # resets --merge ORIG_HEAD
-```
-
-Undo adding specific files:
-```bash
-git add file1.go file2.go
-git undo          # unstages file1.go file2.go
-```
-
-Smart guidance for branch operations:
-```bash
-git checkout feature-branch
-git undo          # guides you to use git back instead
-# git-undo ℹ️: Last operation can't be undone. Use git back instead.
-```
-
-## Development & Testing
-```bash
-make tidy      # fmt, vet, mod tidy
-make test      # unit tests
-make lint      # golangci‑lint
-make build     # compile to ./build/git-undo
-make install   # installs Go binary and adds zsh hook
-```
-
-## Development
-
-### Building with Version Information
-
-To build git-undo with a specific version:
-
-```bash
-# Using git describe
-VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-go build -ldflags "-X main.version=$VERSION" ./cmd/git-undo
-
-# Or manually specify version
-go build -ldflags "-X main.version=v1.2.3" ./cmd/git-undo
-```
-
-### Testing
-
-Run the test suite:
-
-```bash
-go test ./...
-```
-
-## Contributing & Feedback
-Spotted a bug or missing undo case?
-Opening an issue or PR makes the tool better for everyone.
-If `git-undo` saved your bacon, please **star the repo** and share suggestions!
+Found a Git command that should be undoable? [Open an issue](https://github.com/amberpixels/git-undo/issues) or submit a PR!
 
 ## License
-[MIT](LICENSE)
+
+MIT - see [LICENSE](LICENSE) file.
+
+---
+
+**Make Git worry-free.** [⭐ Star this repo](https://github.com/amberpixels/git-undo) if git-undo makes your development workflow better!
