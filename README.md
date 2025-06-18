@@ -1,6 +1,9 @@
-# git-undo
+# git-undo ✨
 
-# **Ctrl+Z for Git commands**
+<p align="center">
+  <img src="logo.png" alt="Logo" width="300"/><br>
+</p>
+<h3 align="center">Ctrl+Z for Git commands</h3>
 
 ## 1. `git undo`: one simple command to undo (almost) any Git operation:
 
@@ -118,7 +121,7 @@ git undo                 # deletes branch, returns to previous
 
 Get the version information:
 ```bash
-go install github.com/amberpixels/git-undo/cmd/git-undo@latest
+git undo self version # same as git undo version
 ```
 
 Update to latest version:
@@ -141,4 +144,5 @@ MIT - see [LICENSE](LICENSE) file.
 
 ---
 
-**Make Git worry-free.** [⭐ Star this repo](https://github.com/amberpixels/git-undo) if git-undo makes your development workflow better!
+**Make Git worry-free!**
+[⭐ Star this repo](https://github.com/amberpixels/git-undo) if `git undo` makes your development workflow better!
