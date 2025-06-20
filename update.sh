@@ -210,7 +210,6 @@ install_dispatcher_into() {
         log "Installing dispatcher script to: $DISPATCHER_FILE"
 
         # Debug: Check if source file exists
-        echo "AAAA $DISPATCHER_SRC"
         if [[ ! -f "$DISPATCHER_SRC" ]]; then
             log_error "Source dispatcher script not found: $DISPATCHER_SRC"
             log_error "DISPATCHER_SRC variable: '$DISPATCHER_SRC'"
@@ -331,10 +330,10 @@ main() {
         log "Could not determine current version. Is git-undo installed?"
         exit 1
     fi
-    
+
     if [[ -z "$current_version" || "$current_version" == "unknown" ]]; then
         echo -e " ${YELLOW}UNKNOWN${NC}"
-        log "No version information found. Reinstall git-undo."
+        log_warning "No version information found. Reinstall git-undo manually."
         exit 1
     else
         echo -e " ${BLUE}$current_version${NC}"
@@ -354,7 +353,7 @@ main() {
     echo -en "${GRAY}git-undo:${NC} 3. Comparing releases..."
     local comparison
     comparison=$(version_compare "$current_version" "$latest_version")
-    
+
     case "$comparison" in
         "same")
             echo -e " ${GREEN}UP TO DATE${NC}"
@@ -376,7 +375,7 @@ main() {
     echo -e "Update available: ${BLUE}$current_version${NC} → ${GREEN}$latest_version${NC}"
     echo -en "Do you want to update? [Y/n]: "
     read -r response
-    
+
     case "$response" in
         [nN]|[nN][oO])
             log "Update cancelled."
@@ -390,7 +389,7 @@ main() {
     echo -en "${GRAY}git-undo:${NC} 4. Downloading latest installer..."
     local temp_installer
     temp_installer=$(mktemp)
-    
+
     if command -v curl >/dev/null 2>&1; then
         if curl -sL "$INSTALL_URL" -o "$temp_installer"; then
             echo -e " ${GREEN}OK${NC}"

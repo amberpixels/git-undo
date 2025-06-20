@@ -1,10 +1,13 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
+
+	"runtime/debug"
 
 	gitundoembeds "github.com/amberpixels/git-undo"
 	"github.com/amberpixels/git-undo/internal/git-undo/logging"
@@ -23,10 +26,11 @@ type GitHelper interface {
 
 // App represents the main app.
 type App struct {
-	verbose      bool
-	dryRun       bool
-	buildVersion string
+	version       string
+	versionSource string
 
+	// dir stands for working dir for the App
+	// It's suggested to be filled and used in tests only.
 	dir string
 
 	// isInternalCall is a hack, so app works OK even without GIT_UNDO_INTERNAL_HOOK env variable.
@@ -38,8 +42,8 @@ type App struct {
 	isBackMode bool
 }
 
-// IsInternalCall checks if the hook is being called internally (either via test or zsh script).
-func (a *App) IsInternalCall() bool {
+// getIsInternalCall checks if the hook is being called internally (either via test or zsh script).
+func (a *App) getIsInternalCall() bool {
 	if a.isInternalCall {
 		return true
 	}
@@ -49,21 +53,224 @@ func (a *App) IsInternalCall() bool {
 }
 
 // NewAppGitUndo creates a new App instance.
-func NewAppGitUndo(version string, verbose, dryRun bool) *App {
+func NewAppGitUndo(version string, versionSource string) *App {
 	return &App{
-		dir:          ".",
-		buildVersion: version,
-		verbose:      verbose,
-		dryRun:       dryRun,
-		isBackMode:   false,
+		dir:           ".",
+		version:       version,
+		versionSource: versionSource,
+		isBackMode:    false,
 	}
 }
 
-// NewAppGiBack creates a new App instance for git-back.
-func NewAppGiBack(version string, verbose, dryRun bool) *App {
-	app := NewAppGitUndo(version, verbose, dryRun)
+// NewAppGitBack creates a new App instance for git-back.
+func NewAppGitBack(version, versionSource string) *App {
+	app := NewAppGitUndo(version, versionSource)
 	app.isBackMode = true
 	return app
+}
+
+// HandleVersion handles the --version flag by delegating to SelfController.
+func (a *App) HandleVersion(verbose bool) error {
+	selfCtrl := NewSelfController(a.version, a.versionSource, verbose, a.getAppName())
+	return selfCtrl.cmdVersion()
+}
+
+// RunOptions contains parsed CLI options.
+type RunOptions struct {
+	Verbose     bool
+	DryRun      bool
+	HookCommand string
+	ShowLog     bool
+	Args        []string
+}
+
+// Run executes the app with parsed options.
+func (a *App) Run(ctx context.Context, opts RunOptions) error {
+	a.logDebugf(opts.Verbose, "called in verbose mode")
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			a.logDebugf(opts.Verbose, "git-undo panic recovery: %v", recovered)
+		}
+	}()
+
+	selfCtrl := NewSelfController(a.version, a.versionSource, opts.Verbose, a.getAppName()).
+		AddScript(CommandUpdate, gitundoembeds.GetUpdateScript()).
+		AddScript(CommandUninstall, gitundoembeds.GetUninstallScript())
+
+	if err := selfCtrl.HandleSelfCommand(opts.Args); err == nil {
+		return nil
+	} else if !errors.Is(err, ErrNotSelfCommand) {
+		return err
+	}
+
+	g := githelpers.NewGitHelper(a.dir)
+
+	gitDir, err := g.GetRepoGitDir()
+	if err != nil {
+		// Silently return for non-git repos when not using self commands
+		a.logDebugf(opts.Verbose, "not in a git repository, ignoring command%v: %s", opts.Args, err)
+		return nil
+	}
+
+	lgr := logging.NewLogger(gitDir, g)
+	if lgr == nil {
+		return errors.New("failed to create git-undo logger")
+	}
+
+	// Handle --hook flag
+	if opts.HookCommand != "" {
+		return a.cmdHook(lgr, opts.Verbose, opts.HookCommand)
+	}
+
+	// Handle --log flag
+	if opts.ShowLog {
+		return a.cmdLog(lgr)
+	}
+
+	return a.run(ctx, lgr, g, opts)
+}
+
+// run contains the core undo/back functionality.
+func (a *App) run(ctx context.Context, lgr *logging.Logger, g GitHelper, opts RunOptions) error {
+	args := opts.Args
+	// Check if this is a "git undo undo" command
+	if len(args) > 0 && args[0] == "undo" {
+		// Get the last undoed entry (from current reference)
+		lastEntry, err := lgr.GetLastEntry()
+		if err != nil {
+			a.logErrorf("something wrong with the log: %v", err)
+			return nil
+		}
+		if lastEntry == nil || !lastEntry.Undoed {
+			// nothing to undo
+			return nil
+		}
+
+		// Unmark the entry in the log
+		if err := lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
+			return fmt.Errorf("failed to unmark command: %w", err)
+		}
+
+		// Execute the original command
+		gitCmd, err := githelpers.ParseGitCommand(lastEntry.Command)
+		if err != nil {
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastEntry.Command, err)
+		}
+		if !gitCmd.Supported {
+			return fmt.Errorf("invalid last undo-ed cmd[%s]: not supported", lastEntry.Command)
+		}
+
+		if err := g.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
+			return fmt.Errorf("failed to redo command[%s]: %w", lastEntry.Command, err)
+		}
+
+		a.logDebugf(opts.Verbose, "Successfully redid: %s", lastEntry.Command)
+		return nil
+	}
+
+	// Get the last git command
+	var lastEntry *logging.Entry
+	var err error
+	if a.isBackMode {
+		// For git-back, look for the last checkout/switch command (including undoed ones for toggle behavior)
+		// We pass "any" to look across all refs, not just the current one
+		lastEntry, err = lgr.GetLastEntry(logging.RefAny)
+		if err != nil {
+			return fmt.Errorf("failed to get last command: %w", err)
+		}
+		if lastEntry == nil {
+			a.logDebugf(opts.Verbose, "no commands found")
+			return nil
+		}
+		// Check if the last command was a checkout or switch command
+		if !a.isCheckoutOrSwitchCommand(lastEntry.Command) {
+			// If not, try to find the last checkout/switch command (including undoed ones for toggle behavior)
+			lastEntry, err = lgr.GetLastCheckoutSwitchEntryForToggle(logging.RefAny)
+			if err != nil {
+				return fmt.Errorf("failed to get last checkout/switch command: %w", err)
+			}
+			if lastEntry == nil {
+				a.logDebugf(opts.Verbose, "no checkout/switch commands to undo")
+				return nil
+			}
+		}
+	} else {
+		// For git-undo, get any regular entry
+		lastEntry, err = lgr.GetLastRegularEntry()
+		if err != nil {
+			return fmt.Errorf("failed to get last git command: %w", err)
+		}
+		if lastEntry == nil {
+			a.logDebugf(opts.Verbose, "nothing to undo")
+			return nil
+		}
+
+		// Check if the last command was checkout or switch - suggest git back instead
+		if a.isCheckoutOrSwitchCommand(lastEntry.Command) {
+			a.logInfof("Last operation can't be undone. Use %sgit back%s instead.", yellowColor, resetColor)
+			return nil
+		}
+	}
+
+	a.logDebugf(opts.Verbose, "Last git command[%s]: %s", lastEntry.Ref, yellowColor+lastEntry.Command+resetColor)
+
+	// Get the appropriate undoer
+	var u undoer.Undoer
+	if a.isBackMode {
+		u = undoer.NewBack(lastEntry.Command, g)
+	} else {
+		u = undoer.New(lastEntry.Command, g)
+	}
+
+	// Get the undo commands
+	undoCmds, err := u.GetUndoCommands()
+	if err != nil {
+		return err
+	}
+
+	if opts.DryRun {
+		for _, undoCmd := range undoCmds {
+			a.logDebugf(opts.Verbose, "Would run: %s\n", undoCmd.Command)
+			if len(undoCmd.Warnings) > 0 {
+				for _, warning := range undoCmd.Warnings {
+					a.logWarnf("%s", warning)
+				}
+			}
+		}
+		return nil
+	}
+
+	// Execute the undo commands
+	for i, undoCmd := range undoCmds {
+		// TODO: at some point we can check ctx here for timeout/cancel/etc
+		_ = ctx
+
+		if err := undoCmd.Exec(); err != nil {
+			return fmt.Errorf("failed to execute undo command %d/%d %s via %s: %w",
+				i+1, len(undoCmds), lastEntry.Command, undoCmd.Command, err)
+		}
+		a.logDebugf(opts.Verbose, "Successfully executed undo command %d/%d: %s via %s",
+			i+1, len(undoCmds), lastEntry.Command, undoCmd.Command)
+		if len(undoCmd.Warnings) > 0 {
+			for _, warning := range undoCmd.Warnings {
+				a.logWarnf("%s", warning)
+			}
+		}
+	}
+
+	// Mark the entry as undoed in the log
+	if err := lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
+		a.logWarnf("Failed to mark command as undoed: %v", err)
+	}
+
+	// Summary message for all commands
+	if len(undoCmds) == 1 {
+		a.logDebugf(opts.Verbose, "Successfully undid: %s via %s", lastEntry.Command, undoCmds[0].Command)
+	} else {
+		a.logDebugf(opts.Verbose, "Successfully undid: %s via %d commands", lastEntry.Command, len(undoCmds))
+	}
+	return nil
 }
 
 // ANSI escape code for gray color.
@@ -101,8 +308,8 @@ func (a *App) isCheckoutOrSwitchCommand(command string) bool {
 }
 
 // logDebugf writes debug messages to stderr when verbose mode is enabled.
-func (a *App) logDebugf(format string, args ...any) {
-	if !a.verbose {
+func (a *App) logDebugf(verbose bool, format string, args ...any) {
+	if !verbose {
 		return
 	}
 
@@ -124,206 +331,25 @@ func (a *App) logInfof(format string, args ...any) {
 	_, _ = fmt.Fprintf(os.Stderr, yellowColor+a.getAppName()+" ℹ️: "+grayColor+format+resetColor+"\n", args...)
 }
 
-// Run executes the main app logic.
-func (a *App) Run(args []string) (err error) {
-	a.logDebugf("called in verbose mode")
+func (a *App) cmdHook(lgr *logging.Logger, verbose bool, hooked string) error {
+	a.logDebugf(verbose, "hook: start")
 
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			a.logDebugf("git-undo panic recovery: %v", recovered)
-			err = errors.New("unexpected internal failure")
-		}
-	}()
-
-	selfCtrl := NewSelfController(a.buildVersion, a.verbose, a.getAppName()).
-		AddScript(CommandUpdate, gitundoembeds.GetUpdateScript()).
-		AddScript(CommandUninstall, gitundoembeds.GetUninstallScript())
-
-	if err := selfCtrl.HandleSelfCommand(args); err == nil {
-		return nil
-	} else if !errors.Is(err, ErrNotSelfCommand) {
-		return err
-	}
-
-	g := githelpers.NewGitHelper(a.dir)
-
-	gitDir, err := g.GetRepoGitDir()
-	if err != nil {
-		// Silently return for non-git repos when not using self commands
-		a.logDebugf("not in a git repository, ignoring command%v: %s", args, err)
-		return nil
-	}
-
-	lgr := logging.NewLogger(gitDir, g)
-	if lgr == nil {
-		return errors.New("failed to create git-undo logger")
-	}
-
-	// Custom commands are --hook and --log
-	for _, arg := range args {
-		switch {
-		case strings.HasPrefix(arg, "--hook"):
-			return a.cmdHook(lgr, arg)
-		case arg == "--log":
-			return a.cmdLog(lgr)
-		}
-	}
-
-	// Check if this is a "git undo undo" command
-	if len(args) > 0 && args[0] == "undo" {
-		// Get the last undoed entry (from current reference)
-		lastEntry, err := lgr.GetLastEntry()
-		if err != nil {
-			a.logErrorf("something wrong with the log: %v", err)
-			return nil
-		}
-		if lastEntry == nil || !lastEntry.Undoed {
-			// nothing to undo
-			return nil
-		}
-
-		// Unmark the entry in the log
-		if err := lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
-			return fmt.Errorf("failed to unmark command: %w", err)
-		}
-
-		// Execute the original command
-		gitCmd, err := githelpers.ParseGitCommand(lastEntry.Command)
-		if err != nil {
-			return fmt.Errorf("invalid last undo-ed cmd[%s]: %w", lastEntry.Command, err)
-		}
-		if !gitCmd.Supported {
-			return fmt.Errorf("invalid last undo-ed cmd[%s]: not supported", lastEntry.Command)
-		}
-
-		if err := g.GitRun(gitCmd.Name, gitCmd.Args...); err != nil {
-			return fmt.Errorf("failed to redo command[%s]: %w", lastEntry.Command, err)
-		}
-
-		a.logDebugf("Successfully redid: %s", lastEntry.Command)
-		return nil
-	}
-
-	// Get the last git command
-	var lastEntry *logging.Entry
-	if a.isBackMode {
-		// For git-back, look for the last checkout/switch command (including undoed ones for toggle behavior)
-		// We pass "any" to look across all refs, not just the current one
-		lastEntry, err = lgr.GetLastEntry(logging.RefAny)
-		if err != nil {
-			return fmt.Errorf("failed to get last command: %w", err)
-		}
-		if lastEntry == nil {
-			a.logDebugf("no commands found")
-			return nil
-		}
-		// Check if the last command was a checkout or switch command
-		if !a.isCheckoutOrSwitchCommand(lastEntry.Command) {
-			// If not, try to find the last checkout/switch command (including undoed ones for toggle behavior)
-			lastEntry, err = lgr.GetLastCheckoutSwitchEntryForToggle(logging.RefAny)
-			if err != nil {
-				return fmt.Errorf("failed to get last checkout/switch command: %w", err)
-			}
-			if lastEntry == nil {
-				a.logDebugf("no checkout/switch commands to undo")
-				return nil
-			}
-		}
-	} else {
-		// For git-undo, get any regular entry
-		lastEntry, err = lgr.GetLastRegularEntry()
-		if err != nil {
-			return fmt.Errorf("failed to get last git command: %w", err)
-		}
-		if lastEntry == nil {
-			a.logDebugf("nothing to undo")
-			return nil
-		}
-
-		// Check if the last command was checkout or switch - suggest git back instead
-		if a.isCheckoutOrSwitchCommand(lastEntry.Command) {
-			a.logInfof("Last operation can't be undone. Use %sgit back%s instead.", yellowColor, resetColor)
-			return nil
-		}
-	}
-
-	a.logDebugf("Last git command[%s]: %s", lastEntry.Ref, yellowColor+lastEntry.Command+resetColor)
-
-	// Get the appropriate undoer
-	var u undoer.Undoer
-	if a.isBackMode {
-		u = undoer.NewBack(lastEntry.Command, g)
-	} else {
-		u = undoer.New(lastEntry.Command, g)
-	}
-
-	// Get the undo commands
-	undoCmds, err := u.GetUndoCommands()
-	if err != nil {
-		return err
-	}
-
-	if a.dryRun {
-		for _, undoCmd := range undoCmds {
-			a.logDebugf("Would run: %s\n", undoCmd.Command)
-			if len(undoCmd.Warnings) > 0 {
-				for _, warning := range undoCmd.Warnings {
-					a.logWarnf("%s", warning)
-				}
-			}
-		}
-		return nil
-	}
-
-	// Execute the undo commands
-	for i, undoCmd := range undoCmds {
-		if err := undoCmd.Exec(); err != nil {
-			return fmt.Errorf("failed to execute undo command %d/%d %s via %s: %w",
-				i+1, len(undoCmds), lastEntry.Command, undoCmd.Command, err)
-		}
-		a.logDebugf("Successfully executed undo command %d/%d: %s via %s",
-			i+1, len(undoCmds), lastEntry.Command, undoCmd.Command)
-		if len(undoCmd.Warnings) > 0 {
-			for _, warning := range undoCmd.Warnings {
-				a.logWarnf("%s", warning)
-			}
-		}
-	}
-
-	// Mark the entry as undoed in the log
-	if err := lgr.ToggleEntry(lastEntry.GetIdentifier()); err != nil {
-		a.logWarnf("Failed to mark command as undoed: %v", err)
-	}
-
-	// Summary message for all commands
-	if len(undoCmds) == 1 {
-		a.logDebugf("Successfully undid: %s via %s", lastEntry.Command, undoCmds[0].Command)
-	} else {
-		a.logDebugf("Successfully undid: %s via %d commands", lastEntry.Command, len(undoCmds))
-	}
-	return nil
-}
-
-func (a *App) cmdHook(lgr *logging.Logger, hookArg string) error {
-	a.logDebugf("hook: start")
-
-	if !a.IsInternalCall() {
+	if !a.getIsInternalCall() {
 		return errors.New("hook must be called from inside shell script (bash/zsh hook)")
 	}
 
-	hooked := strings.TrimSpace(strings.TrimPrefix(hookArg, "--hook"))
-	hooked = strings.TrimSpace(strings.TrimPrefix(hooked, "="))
+	hooked = strings.TrimSpace(hooked)
 
 	gitCmd, err := githelpers.ParseGitCommand(hooked)
 	if err != nil || !gitCmd.Supported {
 		// This should not happen in a success path
 		// because the zsh script should only send non-failed (so valid) git command
 		// but just in case let's re-validate again here
-		a.logDebugf("hook: skipping as invalid git command %q", hooked)
+		a.logDebugf(verbose, "hook: skipping as invalid git command %q", hooked)
 		return nil //nolint:nilerr // We're fine with this
 	}
 	if !gitCmd.ShouldBeLogged() {
-		a.logDebugf("hook: skipping as a read-only command: %q", hooked)
+		a.logDebugf(verbose, "hook: skipping as a read-only command: %q", hooked)
 		return nil
 	}
 
@@ -331,11 +357,34 @@ func (a *App) cmdHook(lgr *logging.Logger, hookArg string) error {
 		return fmt.Errorf("failed to log command: %w", err)
 	}
 
-	a.logDebugf("hook: prepended %q", hooked)
+	a.logDebugf(verbose, "hook: prepended %q", hooked)
 	return nil
 }
 
 // cmdLog displays the git-undo command log.
 func (a *App) cmdLog(lgr *logging.Logger) error {
 	return lgr.Dump(os.Stdout)
+}
+
+// HandleError prints error messages and exits with status code 1.
+func HandleError(appName string, err error) {
+	_, _ = fmt.Fprintln(os.Stderr, redColor+appName+" ❌: "+grayColor+err.Error()+resetColor)
+	os.Exit(1)
+}
+
+// HandleAppVersion handles the app binary version.
+func HandleAppVersion(ldFlagVersion, versionSource string) (string, string) {
+	// 1. `build way`: by default version is given via `go build` from ldflags
+	var version = ldFlagVersion
+	if version != "" {
+		versionSource = "ldflags"
+	}
+
+	// 2. `install way`: When running binary that was installed via `go install`, here we'll get the proper version
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		version = bi.Main.Version
+		versionSource = "buildinfo"
+	}
+
+	return version, versionSource
 }

@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,9 +14,10 @@ import (
 )
 
 const (
-	verbose         = false
-	autoGitUndoHook = true
-	testAppVersion  = "v1.2.3-test"
+	verbose              = false
+	autoGitUndoHook      = true
+	testAppVersion       = "v1.2.3-test"
+	testAppVersionSource = "fixed"
 )
 
 // GitTestSuite provides a test environment for git operations.
@@ -43,7 +45,7 @@ func (s *GitTestSuite) SetupSuite() {
 	s.GitTestSuite.GitUndoHook = autoGitUndoHook
 	s.GitTestSuite.SetupSuite()
 
-	s.app = app.NewAppGitUndo(testAppVersion, verbose, false)
+	s.app = app.NewAppGitUndo(testAppVersion, testAppVersionSource)
 	app.SetupAppDir(s.app, s.GetRepoDir())
 	app.SetupInternalCall(s.app)
 	s.GitTestSuite.SetApplication(s.app)
@@ -51,7 +53,10 @@ func (s *GitTestSuite) SetupSuite() {
 
 // gitUndo runs git-undo with the given arguments.
 func (s *GitTestSuite) gitUndo(args ...string) {
-	err := s.app.Run(args)
+	opts := app.RunOptions{
+		Args: args,
+	}
+	err := s.app.Run(context.Background(), opts)
 	s.Require().NoError(err)
 }
 
@@ -63,7 +68,10 @@ func (s *GitTestSuite) gitUndoLog() string {
 	setGlobalStdout(w)
 
 	// Run the log command
-	err = s.app.Run([]string{"--log"})
+	opts := app.RunOptions{
+		ShowLog: true,
+	}
+	err = s.app.Run(context.Background(), opts)
 	// Close the writer end and restore stdout
 	_ = w.Close()
 	setGlobalStdout(origStdout)
@@ -275,7 +283,8 @@ func (s *GitTestSuite) TestCheckoutSwitchDetection() {
 	os.Stderr = w
 
 	// Run git undo - should warn about checkout
-	err = s.app.Run([]string{})
+	opts := app.RunOptions{}
+	err = s.app.Run(context.Background(), opts)
 
 	// Close writer and restore stderr
 	_ = w.Close()
@@ -303,7 +312,8 @@ func (s *GitTestSuite) TestCheckoutSwitchDetection() {
 	os.Stderr = w
 
 	// Run git undo - should warn about switch
-	err = s.app.Run([]string{})
+	opts = app.RunOptions{}
+	err = s.app.Run(context.Background(), opts)
 
 	// Close writer and restore stderr
 	_ = w.Close()
@@ -371,23 +381,27 @@ func (s *GitTestSuite) TestSelfCommands() {
 	// We'll just test that they don't error out and attempt to call the scripts
 
 	// Create a temporary app without git repo requirement for this test
-	testApp := app.NewAppGitUndo(testAppVersion, false, false) // not verbose, not dry run
+	testApp := app.NewAppGitUndo(testAppVersion, testAppVersionSource)
 
 	// Test self update command - these will actually try to run the real scripts
 	// but should fail on network/permission issues rather than script issues
-	err := testApp.Run([]string{"self", "update"})
+	opts := app.RunOptions{Args: []string{"self", "update"}}
+	err := testApp.Run(context.Background(), opts)
 	s.Require().Error(err) // Expected to fail in test environment
 
 	// Test self-update command (hyphenated form)
-	err = testApp.Run([]string{"self-update"})
+	opts = app.RunOptions{Args: []string{"self-update"}}
+	err = testApp.Run(context.Background(), opts)
 	s.Require().Error(err) // Expected to fail in test environment
 
 	// Test self uninstall command
-	err = testApp.Run([]string{"self", "uninstall"})
+	opts = app.RunOptions{Args: []string{"self", "uninstall"}}
+	err = testApp.Run(context.Background(), opts)
 	s.Require().Error(err) // Expected to fail in test environment
 
 	// Test self-uninstall command (hyphenated form)
-	err = testApp.Run([]string{"self-uninstall"})
+	opts = app.RunOptions{Args: []string{"self-uninstall"}}
+	err = testApp.Run(context.Background(), opts)
 	s.Require().Error(err) // Expected to fail in test environment
 }
 
@@ -400,7 +414,7 @@ func (s *GitTestSuite) TestSelfCommandsParsing() {
 	tmpDir := s.T().TempDir()
 	_ = tmpDir
 	// Create an app pointing to the non-git directory
-	testApp := app.NewAppGitUndo(testAppVersion, false, false)
+	testApp := app.NewAppGitUndo(testAppVersion, testAppVersionSource)
 	s.Require().NotNil(testApp)
 
 	// These should attempt to run (and fail on script execution) rather than fail on git repo validation
@@ -412,7 +426,8 @@ func (s *GitTestSuite) TestSelfCommandsParsing() {
 	}
 
 	for _, args := range testCases {
-		err := testApp.Run(args)
+		opts := app.RunOptions{Args: args}
+		err := testApp.Run(context.Background(), opts)
 		// Should fail on script execution, not on git repo validation
 		s.Require().Error(err, "Command %v should fail on script execution", args)
 		// Should not contain git repo error
@@ -438,7 +453,8 @@ func (s *GitTestSuite) TestVersionCommands() {
 		setGlobalStdout(w)
 
 		// Run the version command
-		err = s.app.Run(args)
+		opts := app.RunOptions{Args: args}
+		err = s.app.Run(context.Background(), opts)
 
 		// Close writer and restore stdout
 		_ = w.Close()
@@ -462,7 +478,8 @@ func (s *GitTestSuite) TestVersionDetection() {
 	s.T().Skip("Skipping version detection test") // TODO: fix me in future
 
 	// Test with git version available (in actual git repo)
-	gitApp := app.NewAppGitUndo(testAppVersion, false, false)
+	gitApp := app.NewAppGitUndo(testAppVersion, testAppVersionSource)
+
 	s.Require().NotNil(gitApp)
 
 	// Capture stdout to check git version
@@ -471,7 +488,8 @@ func (s *GitTestSuite) TestVersionDetection() {
 	origStdout := os.Stdout
 	setGlobalStdout(w)
 
-	err = gitApp.Run([]string{"version"})
+	opts := app.RunOptions{Args: []string{"version"}}
+	err = gitApp.Run(context.Background(), opts)
 
 	_ = w.Close()
 	setGlobalStdout(origStdout)
@@ -487,14 +505,16 @@ func (s *GitTestSuite) TestVersionDetection() {
 
 	// Test with build version only (no git repo)
 	tmpDir := s.T().TempDir()
-	buildApp := app.NewAppGitUndo(testAppVersion, false, false)
+	buildApp := app.NewAppGitUndo(testAppVersion, testAppVersionSource)
+
 	_ = tmpDir
 
 	r, w, err = os.Pipe()
 	s.Require().NoError(err)
 	setGlobalStdout(w)
 
-	err = buildApp.Run([]string{"version"})
+	opts = app.RunOptions{Args: []string{"version"}}
+	err = buildApp.Run(context.Background(), opts)
 
 	_ = w.Close()
 	setGlobalStdout(origStdout)
@@ -508,14 +528,16 @@ func (s *GitTestSuite) TestVersionDetection() {
 	s.Contains(buildOutput, "git-undo v2.0.0-build", "Should show build version when no git")
 
 	// Test fallback to unknown
-	unknownApp := app.NewAppGitUndo(testAppVersion, false, false)
+	unknownApp := app.NewAppGitUndo(testAppVersion, testAppVersionSource)
+
 	// Don't set build version
 
 	r, w, err = os.Pipe()
 	s.Require().NoError(err)
 	setGlobalStdout(w)
 
-	err = unknownApp.Run([]string{"version"})
+	opts = app.RunOptions{Args: []string{"version"}}
+	err = unknownApp.Run(context.Background(), opts)
 
 	_ = w.Close()
 	setGlobalStdout(origStdout)

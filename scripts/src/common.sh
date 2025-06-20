@@ -175,7 +175,6 @@ install_dispatcher_into() {
         log "Installing dispatcher script to: $DISPATCHER_FILE"
 
         # Debug: Check if source file exists
-        echo "AAAA $DISPATCHER_SRC"
         if [[ ! -f "$DISPATCHER_SRC" ]]; then
             log_error "Source dispatcher script not found: $DISPATCHER_SRC"
             log_error "DISPATCHER_SRC variable: '$DISPATCHER_SRC'"

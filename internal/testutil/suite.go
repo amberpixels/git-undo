@@ -1,17 +1,19 @@
 package testutil
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/amberpixels/git-undo/internal/app"
 	"github.com/stretchr/testify/suite"
 )
 
 type GitUndoApp interface {
-	Run(args []string) error
+	Run(ctx context.Context, opts app.RunOptions) error
 }
 
 // GitTestSuite provides a test environment for git operations.
@@ -58,7 +60,8 @@ func (s *GitTestSuite) Git(args ...string) {
 		// Create the hook command string
 		hookCmd := "git " + strings.Join(args, " ")
 		// Call git-undo hook via the application
-		if err := s.app.Run([]string{"--hook=" + hookCmd}); err != nil {
+		opts := app.RunOptions{HookCommand: hookCmd}
+		if err := s.app.Run(context.Background(), opts); err != nil {
 			s.FailNow("Failed to run git-undo hook", err)
 		}
 	}
