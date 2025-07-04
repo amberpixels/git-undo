@@ -1,5 +1,3 @@
 package logging
 
-var ParseLogLine = parseLogLine
-
-var ToggleLine = toggleLine
+var ToggleLogLine = toggleLine
