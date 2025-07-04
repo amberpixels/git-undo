@@ -86,11 +86,6 @@ func (c *GitCommand) IsNavigating() bool {
 	return c.BehaviorType == Navigating
 }
 
-// ShouldBeLogged returns true if the command should be logged.
-func (c *GitCommand) ShouldBeLogged() bool {
-	return c.BehaviorType == Mutating || c.BehaviorType == Navigating
-}
-
 // ParseGitCommand parses a git command string into a GitCommand struct.
 func ParseGitCommand(raw string) (*GitCommand, error) {
 	parts, err := shellwords.NewParser().Parse(raw)
@@ -105,7 +100,7 @@ func ParseGitCommand(raw string) (*GitCommand, error) {
 	args := parts[2:]
 
 	// Special handling for git undo --hook
-	if name == "undo" {
+	if name == CustomCommandUndo {
 		if slices.Contains(args, "--hook") {
 			return &GitCommand{
 				Name:         name,
@@ -372,8 +367,10 @@ func determineConditionalBehavior(name string, args []string) BehaviorType {
 		return determineRemoteBehavior(args)
 	case "config":
 		return determineConfigBehavior(args)
-	case "undo":
+	case CustomCommandUndo: // "undo"
 		return determineUndoBehavior(args)
+	case CustomCommandBack: // "back
+		return determineBackBehavior(args)
 	case "restore":
 		// restore is always mutating when it has file arguments
 		for _, arg := range args {
@@ -532,13 +529,13 @@ func determineConfigBehavior(args []string) BehaviorType {
 
 // determineUndoBehavior determines if an undo command is mutating, navigating, or read-only.
 func determineUndoBehavior(args []string) BehaviorType {
-	// Check for read-only flags
-	for _, arg := range args {
-		if arg == "--log" {
-			return ReadOnly
-		}
+	// git undo --log (same as git back --log) are simple read-only commands (show commands log)
+	if slices.Contains(args, "--log") {
+		return ReadOnly
 	}
-
-	// All other undo operations are mutating
 	return Mutating
 }
+
+// determineBackBehavior determines if a back command is mutating, navigating, or read-only.
+// behaves exactly the same as `git undo`
+var determineBackBehavior = determineUndoBehavior
