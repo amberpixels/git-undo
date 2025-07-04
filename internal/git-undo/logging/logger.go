@@ -91,7 +91,7 @@ type Entry struct {
 }
 
 // GetIdentifier uses String() representation as the identifier itself
-// But without prefix sign (so undoed command are still found)
+// But without prefix sign (so undoed command are still found).
 func (e *Entry) GetIdentifier() string {
 	return strings.TrimLeft(
 		e.String(), "+-",
@@ -124,20 +124,22 @@ func (e *Entry) MarshalText() ([]byte, error) {
 func (e *Entry) UnmarshalText(data []byte) error {
 	entryString := string(data)
 
-	if strings.HasPrefix(entryString, "+") {
+	switch {
+	case strings.HasPrefix(entryString, "+"):
 		e.Undoed = false
-	} else if strings.HasPrefix(entryString, "-") {
+	case strings.HasPrefix(entryString, "-"):
 		e.Undoed = true
-	} else {
+	default:
 		return fmt.Errorf("invalid syntax line: entry must start with +/-, not [%s]", string(entryString[0]))
 	}
 
 	entryString = strings.TrimLeft(entryString, "+-")
-	if strings.HasPrefix(entryString, "M") {
+	switch {
+	case strings.HasPrefix(entryString, "M"):
 		e.IsNavigation = false
-	} else if strings.HasPrefix(entryString, "N") {
+	case strings.HasPrefix(entryString, "N"):
 		e.IsNavigation = true
-	} else {
+	default:
 		return fmt.Errorf("invalid syntax line: entry must have M/N prefix, not [%s]", string(entryString[0]))
 	}
 
@@ -255,7 +257,7 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	gitCmd, err := githelpers.ParseGitCommand(strGitCommand)
 	if err != nil {
 		// If we can't parse it, skip logging to be safe
-		return nil
+		return nil //nolint:nilerr // it's intended to be like that
 	}
 	if !ShouldBeLogged(gitCmd) {
 		return nil

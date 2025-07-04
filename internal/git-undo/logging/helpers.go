@@ -102,11 +102,12 @@ func toggleLine(file *os.File, lineNumber int) error {
 
 		if currentLine == lineNumber {
 			// Toggle the line between +/- prefix
-			if strings.HasPrefix(line, "+") {
+			switch {
+			case strings.HasPrefix(line, "+"):
 				line = "-" + strings.TrimPrefix(line, "+")
-			} else if strings.HasPrefix(line, "-") {
+			case strings.HasPrefix(line, "-"):
 				line = "+" + strings.TrimPrefix(line, "-")
-			} else {
+			default:
 				return fmt.Errorf("invalid line syntax. Line must start with +/-, started with `%s`", string(line[0]))
 			}
 		}
