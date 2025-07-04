@@ -537,5 +537,5 @@ func determineUndoBehavior(args []string) BehaviorType {
 }
 
 // determineBackBehavior determines if a back command is mutating, navigating, or read-only.
-// behaves exactly the same as `git undo`
+// behaves exactly the same as `git undo`.
 var determineBackBehavior = determineUndoBehavior
