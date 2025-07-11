@@ -58,7 +58,9 @@ var conditionalBehavior = map[string]struct{}{
 	"tag":      {},
 	"remote":   {},
 	"config":   {},
-	"undo":     {},
+
+	CustomCommandUndo: {},
+	CustomCommandBack: {},
 }
 
 // porcelainCommands is the list of "user-facing" verbs (main porcelain commands).
@@ -89,9 +91,15 @@ var plumbingCommands = []string{
 	"name-rev",
 }
 
+const (
+	CustomCommandUndo = "undo"
+	CustomCommandBack = "back"
+)
+
 // customCommands is the list of custom commands (third-party plugins).
 var customCommands = []string{
-	"undo",
+	CustomCommandUndo,
+	CustomCommandBack,
 }
 
 // buildLookup builds a map from verb → its CommandType.

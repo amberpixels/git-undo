@@ -30,21 +30,23 @@ var allowedSelfCommands = []string{
 
 // SelfController handles self-management commands that don't require a git repository.
 type SelfController struct {
-	buildVersion string
-	verbose      bool
-	appName      string
+	version       string
+	versionSource string
+	verbose       bool
+	appName       string
 
 	// scripts is a map of self-management commands to their scripts.
 	scripts map[string]string
 }
 
 // NewSelfController creates a new SelfController instance.
-func NewSelfController(buildVersion string, verbose bool, appName string) *SelfController {
+func NewSelfController(version, versionSource string, verbose bool, appName string) *SelfController {
 	return &SelfController{
-		buildVersion: buildVersion,
-		verbose:      verbose,
-		appName:      appName,
-		scripts:      map[string]string{},
+		version:       version,
+		versionSource: versionSource,
+		verbose:       verbose,
+		appName:       appName,
+		scripts:       map[string]string{},
 	}
 }
 
@@ -123,14 +125,18 @@ func (sc *SelfController) ExtractSelfCommand(args []string) string {
 
 // cmdVersion displays the version information.
 func (sc *SelfController) cmdVersion() error {
-	fmt.Fprintf(os.Stdout, "%s\n", sc.buildVersion)
+	if sc.verbose {
+		fmt.Fprintf(os.Stdout, "%s (obtained via %s)\n", sc.version, sc.versionSource)
+	} else {
+		fmt.Fprintf(os.Stdout, "%s\n", sc.version)
+	}
 	return nil
 }
 
 // cmdHelp displays the help information.
 func (sc *SelfController) cmdHelp() error {
 	if sc.appName == appNameGitBack {
-		fmt.Fprintf(os.Stdout, "%s %s\n", appNameGitBack, sc.buildVersion)
+		fmt.Fprintf(os.Stdout, "%s %s\n", appNameGitBack, sc.version)
 		fmt.Fprintf(os.Stdout, "Usage: %s\n", appNameGitBack)
 		fmt.Fprintf(os.Stdout, "\n")
 		fmt.Fprintf(os.Stdout, "Git-back undoes the last git checkout or git switch command,\n")
@@ -143,7 +149,7 @@ func (sc *SelfController) cmdHelp() error {
 	}
 
 	// Default git-undo help
-	fmt.Fprintf(os.Stdout, "%s %s\n", appNameGitUndo, sc.buildVersion)
+	fmt.Fprintf(os.Stdout, "%s %s\n", appNameGitUndo, sc.version)
 	fmt.Fprintf(os.Stdout, "Usage: %s [command]\n", appNameGitUndo)
 	fmt.Fprintf(os.Stdout, "\n")
 	fmt.Fprintf(os.Stdout, "Commands:\n")

@@ -19,7 +19,8 @@ type Logger struct {
 	logDir  string
 	logFile string
 
-	// err is nil when everything IS OK: logger is healthy, initialized OK (files exists, are accessible, etc)
+	// err is nil when everything IS OK:
+	// logger is healthy, initialized OK (files exists, are accessible, etc)
 	err error
 
 	// git is a GitHelper (calling getting current ref, etc)
@@ -46,11 +47,13 @@ const (
 	RegularEntry
 	// UndoedEntry represents an entry that has been marked as undoed.
 	UndoedEntry
+	// NavigationEntry represents a navigation command entry.
+	NavigationEntry
 )
 
 // String returns the string representation of the EntryType.
 func (et EntryType) String() string {
-	return [...]string{"", "regular", "undoed"}[et]
+	return [...]string{"", "regular", "undoed", "navigation"}[et]
 }
 
 type Ref string
@@ -82,11 +85,17 @@ type Entry struct {
 
 	// Undoed is true if the entry is undoed.
 	Undoed bool
+
+	// IsNavigation is true if this is a navigation command (checkout/switch).
+	IsNavigation bool
 }
 
-// GetIdentifier returns full command without sign of undoed state (# prefix).
+// GetIdentifier uses String() representation as the identifier itself
+// But without prefix sign (so undoed command are still found).
 func (e *Entry) GetIdentifier() string {
-	return strings.TrimPrefix(e.String(), "#")
+	return strings.TrimLeft(
+		e.String(), "+-",
+	)
 }
 
 // String returns a human-readable representation of the entry.
@@ -97,19 +106,45 @@ func (e *Entry) String() string {
 }
 
 func (e *Entry) MarshalText() ([]byte, error) {
-	entryString := fmt.Sprintf("%s|%s|%s", e.Timestamp.Format(logEntryDateFormat), e.Ref, e.Command)
-	if e.Undoed {
-		entryString = "#" + entryString
+	// Determine prefix based on navigation type and undo status
+	prefixLetter := "M" // M for `modified` as the regular entry type
+	if e.IsNavigation {
+		prefixLetter = "N"
 	}
+	prefixSign := "+"
+	if e.Undoed {
+		prefixSign = "-"
+	}
+	prefix := prefixSign + prefixLetter + " "
+
+	entryString := fmt.Sprintf("%s%s|%s|%s", prefix, e.Timestamp.Format(logEntryDateFormat), e.Ref, e.Command)
 	return []byte(entryString), nil
 }
 
 func (e *Entry) UnmarshalText(data []byte) error {
 	entryString := string(data)
-	if strings.HasPrefix(entryString, "#") {
-		entryString = strings.TrimPrefix(entryString, "#")
+
+	switch {
+	case strings.HasPrefix(entryString, "+"):
+		e.Undoed = false
+	case strings.HasPrefix(entryString, "-"):
 		e.Undoed = true
+	default:
+		return fmt.Errorf("invalid syntax line: entry must start with +/-, not [%s]", string(entryString[0]))
 	}
+
+	entryString = strings.TrimLeft(entryString, "+-")
+	switch {
+	case strings.HasPrefix(entryString, "M"):
+		e.IsNavigation = false
+	case strings.HasPrefix(entryString, "N"):
+		e.IsNavigation = true
+	default:
+		return fmt.Errorf("invalid syntax line: entry must have M/N prefix, not [%s]", string(entryString[0]))
+	}
+
+	entryString = strings.TrimLeft(entryString, "MN")
+	entryString = strings.TrimSpace(entryString)
 
 	// nMustParts = 3 for date, ref, cmd
 	const nMustParts = 3
@@ -130,10 +165,6 @@ func (e *Entry) UnmarshalText(data []byte) error {
 	return nil
 }
 
-// lineProcessor is a function that processes each line of the log file.
-// If it returns false, file reading stops.
-type lineProcessor func(line string) (continueReading bool)
-
 // NewLogger creates a new Logger instance.
 func NewLogger(repoGitDir string, git GitHelper) *Logger {
 	lgr := &Logger{git: git}
@@ -146,17 +177,89 @@ func NewLogger(repoGitDir string, git GitHelper) *Logger {
 		return nil
 	}
 
+	// Check if we need to migrate/truncate old format
+	if err := lgr.migrateOldFormatIfNeeded(); err != nil {
+		// If migration fails, we continue but the logger might have issues
+		// TODO: Add verbose logging here (and remove panic)
+		panic("should not happen " + err.Error())
+	}
+
 	return lgr
 }
 
-// LogCommand logs a git command with timestamp.
+// migrateOldFormatIfNeeded checks if the log file has old format entries and truncates it if needed.
+func (l *Logger) migrateOldFormatIfNeeded() error {
+	// Check if the log file exists
+	_, err := os.Stat(l.logFile)
+	if os.IsNotExist(err) {
+		// No log file exists, nothing to migrate
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check log file: %w", err)
+	}
+
+	// Read the first few lines to check format
+	file, err := os.Open(l.logFile)
+	if err != nil {
+		return fmt.Errorf("failed to open log file for migration check: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	hasOldFormat := false
+
+	// Check first 10 lines or until we find new format
+	for scanner.Scan() && lineCount < 10 {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		lineCount++
+
+		// Check if this line uses new format (+M, -M, +N, -N)
+		if strings.HasPrefix(line, "+M ") || strings.HasPrefix(line, "-M ") ||
+			strings.HasPrefix(line, "+N ") || strings.HasPrefix(line, "-N ") {
+			// Found new format, no migration needed
+			return nil
+		}
+
+		// Check if this line uses old format (N prefix, # prefix, or no prefix)
+		if strings.HasPrefix(line, "N ") || strings.HasPrefix(line, "#") ||
+			(!strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-")) {
+			hasOldFormat = true
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading log file for migration: %w", err)
+	}
+
+	// If we found old format, truncate the file
+	if hasOldFormat && lineCount > 0 {
+		if err := os.Truncate(l.logFile, 0); err != nil {
+			return fmt.Errorf("failed to truncate old format log file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// LogCommand logs a git command with timestamp and handles branch-aware logging.
 func (l *Logger) LogCommand(strGitCommand string) error {
 	if l.err != nil {
 		return fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	// Skip logging git undo commands
-	if strings.HasPrefix(strGitCommand, "git undo") {
+	// Parse and check if command should be logged
+	gitCmd, err := githelpers.ParseGitCommand(strGitCommand)
+	if err != nil {
+		// If we can't parse it, skip logging to be safe
+		return nil //nolint:nilerr // it's intended to be like that
+	}
+	if !ShouldBeLogged(gitCmd) {
 		return nil
 	}
 
@@ -165,6 +268,20 @@ func (l *Logger) LogCommand(strGitCommand string) error {
 	refStr, err := l.git.GetCurrentGitRef()
 	if err == nil {
 		ref = Ref(refStr)
+	}
+
+	// Handle branch-aware logging for mutation commands
+	if !l.IsNavigationCommand(strGitCommand) {
+		// Check if we have consecutive undone commands
+		undoneCount, err := l.CountConsecutiveUndoneCommands(ref)
+		if err == nil && undoneCount > 0 {
+			// We're branching - truncate undone mutation commands
+			if err := l.TruncateToCurrentBranch(ref); err != nil {
+				// Log the error but don't fail the operation
+				// TODO: Add verbose logging here
+				_ = err
+			}
+		}
 	}
 
 	return l.logCommandWithDedup(strGitCommand, ref)
@@ -194,11 +311,17 @@ func (l *Logger) logCommandWithDedup(strGitCommand string, ref Ref) error {
 		l.markLoggedByShellHook(cmdIdentifier)
 	}
 
-	return l.prependLogEntry((&Entry{
-		Timestamp: time.Now(),
-		Ref:       ref,
-		Command:   strGitCommand,
-	}).String())
+	// Create entry with proper navigation flag
+	isNav := l.IsNavigationCommand(strGitCommand)
+	entry := &Entry{
+		Timestamp:    time.Now(),
+		Ref:          ref,
+		Command:      strGitCommand,
+		Undoed:       false,
+		IsNavigation: isNav,
+	}
+
+	return l.prependLogEntry(entry.String())
 }
 
 // createCommandIdentifier creates a short identifier for a command to detect duplicates.
@@ -348,8 +471,15 @@ func (l *Logger) ToggleEntry(entryIdentifier string) error {
 	}
 
 	var foundLineIdx int
-	err := l.processLogFile(func(line string) bool {
-		if strings.TrimSpace(strings.TrimLeft(line, "#")) == entryIdentifier {
+	err := l.ProcessLogFile(func(line string) bool {
+		// Parse the entry and get its identifier
+		entry, err := ParseLogLine(line)
+		if err != nil {
+			foundLineIdx++
+			return true
+		}
+
+		if entry.GetIdentifier() == entryIdentifier {
 			return false
 		}
 
@@ -371,6 +501,7 @@ func (l *Logger) ToggleEntry(entryIdentifier string) error {
 
 // GetLastRegularEntry returns last regular entry (ignoring undoed ones)
 // for the given ref (or current ref if not specified).
+// For git-undo, this skips navigation commands (N prefixed).
 func (l *Logger) GetLastRegularEntry(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
@@ -378,15 +509,20 @@ func (l *Logger) GetLastRegularEntry(refArg ...Ref) (*Entry, error) {
 	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
-	err := l.processLogFile(func(line string) bool {
-		// skip undoed
-		if strings.HasPrefix(line, "#") {
+	err := l.ProcessLogFile(func(line string) bool {
+		// Parse the log line into an Entry
+		entry, err := ParseLogLine(line)
+		if err != nil { // TODO: Logger.lgr should display warnings in Verbose mode here
 			return true
 		}
 
-		// Parse the log line into an Entry
-		entry, err := parseLogLine(line)
-		if err != nil { // TODO: Logger.lgr should display warnings in Verbose mode here
+		// Skip navigation commands - git-undo doesn't process these
+		if entry.IsNavigation {
+			return true
+		}
+
+		// Skip undoed entries
+		if entry.Undoed {
 			return true
 		}
 
@@ -405,8 +541,51 @@ func (l *Logger) GetLastRegularEntry(refArg ...Ref) (*Entry, error) {
 	return foundEntry, nil
 }
 
+// GetLastUndoedEntry returns the last undoed entry for the given ref (or current ref if not specified).
+// This is used for redo functionality to find the most recent undoed command to re-execute.
+// For git-undo, this skips navigation commands (N prefixed).
+func (l *Logger) GetLastUndoedEntry(refArg ...Ref) (*Entry, error) {
+	if l.err != nil {
+		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+	ref := l.resolveRef(refArg...)
+
+	var foundEntry *Entry
+	err := l.ProcessLogFile(func(line string) bool {
+		// Parse the log line into an Entry
+		entry, err := ParseLogLine(line)
+		if err != nil { // TODO: Logger.lgr should display warnings in Verbose mode here
+			return true
+		}
+
+		// Skip navigation commands - git-undo doesn't process these
+		if entry.IsNavigation {
+			return true
+		}
+
+		// Only process undoed entries
+		if !entry.Undoed {
+			return true
+		}
+
+		if !l.matchRef(entry.Ref, ref) {
+			return true
+		}
+
+		// Found a matching undoed entry!
+		foundEntry = entry
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return foundEntry, nil
+}
+
 // GetLastEntry returns last entry for the given ref (or current ref if not specified)
 // regarding of the entry type (undoed or regular).
+// This handles both navigation commands (N prefixed) and mutation commands.
 func (l *Logger) GetLastEntry(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
@@ -415,9 +594,9 @@ func (l *Logger) GetLastEntry(refArg ...Ref) (*Entry, error) {
 	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
-	err := l.processLogFile(func(line string) bool {
+	err := l.ProcessLogFile(func(line string) bool {
 		// Parse the log line into an Entry
-		entry, err := parseLogLine(line)
+		entry, err := ParseLogLine(line)
 		if err != nil { // TODO: warnings maybe?
 			return true
 		}
@@ -439,6 +618,7 @@ func (l *Logger) GetLastEntry(refArg ...Ref) (*Entry, error) {
 
 // GetLastCheckoutSwitchEntry returns the last checkout or switch command entry
 // for the given ref (or current ref if not specified).
+// This method finds NON-UNDOED navigation commands for git-back.
 func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
@@ -447,18 +627,23 @@ func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...Ref) (*Entry, error) {
 	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
-	err := l.processLogFile(func(line string) bool {
-		// skip undoed
-		if strings.HasPrefix(line, "#") {
-			return true
-		}
-
+	err := l.ProcessLogFile(func(line string) bool {
 		// Parse the log line into an Entry
-		entry, err := parseLogLine(line)
+		entry, err := ParseLogLine(line)
 		if err != nil { // TODO: warnings maybe?
 			return true
 		}
 		if !l.matchRef(entry.Ref, ref) {
+			return true
+		}
+
+		// Skip undoed entries
+		if entry.Undoed {
+			return true
+		}
+
+		// Only process navigation commands
+		if !entry.IsNavigation {
 			return true
 		}
 
@@ -480,6 +665,7 @@ func (l *Logger) GetLastCheckoutSwitchEntry(refArg ...Ref) (*Entry, error) {
 
 // GetLastCheckoutSwitchEntryForToggle returns the last checkout or switch command entry
 // for git-back, including undoed entries. This allows git-back to toggle back and forth.
+// This method finds ANY navigation command (including undoed ones) for toggle behavior.
 func (l *Logger) GetLastCheckoutSwitchEntryForToggle(refArg ...Ref) (*Entry, error) {
 	if l.err != nil {
 		return nil, fmt.Errorf("logger is not healthy: %w", l.err)
@@ -488,13 +674,18 @@ func (l *Logger) GetLastCheckoutSwitchEntryForToggle(refArg ...Ref) (*Entry, err
 	ref := l.resolveRef(refArg...)
 
 	var foundEntry *Entry
-	err := l.processLogFile(func(line string) bool {
+	err := l.ProcessLogFile(func(line string) bool {
 		// Parse the log line into an Entry (including undoed entries)
-		entry, err := parseLogLine(line)
+		entry, err := ParseLogLine(line)
 		if err != nil { // TODO: warnings maybe?
 			return true
 		}
 		if !l.matchRef(entry.Ref, ref) {
+			return true
+		}
+
+		// Only process navigation commands
+		if !entry.IsNavigation {
 			return true
 		}
 
@@ -523,6 +714,140 @@ func isCheckoutOrSwitchCommand(command string) bool {
 	}
 
 	return gitCmd.Name == "checkout" || gitCmd.Name == "switch"
+}
+
+// IsNavigationCommand checks if a command is a navigation command (checkout, switch, etc.).
+func (l *Logger) IsNavigationCommand(command string) bool {
+	return isCheckoutOrSwitchCommand(command)
+}
+
+// CountConsecutiveUndoneCommands counts consecutive undone mutation commands from the top of the log.
+// It ignores navigation commands (N prefixed) and only counts mutation commands.
+func (l *Logger) CountConsecutiveUndoneCommands(refArg ...Ref) (int, error) {
+	if l.err != nil {
+		return 0, fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	ref := l.resolveRef(refArg...)
+	count := 0
+
+	err := l.ProcessLogFile(func(line string) bool {
+		// Skip empty lines
+		if strings.TrimSpace(line) == "" {
+			return true
+		}
+
+		// Parse the log line into an Entry
+		entry, err := ParseLogLine(line)
+		if err != nil {
+			return true // Skip malformed lines
+		}
+
+		// Skip navigation commands
+		if entry.IsNavigation {
+			return true
+		}
+
+		// Check if this entry matches our target ref
+		if !l.matchRef(entry.Ref, ref) {
+			return true
+		}
+
+		// If this is an undone mutation command, count it
+		if entry.Undoed {
+			count++
+			return true
+		}
+
+		// If we hit a non-undone mutation command, stop counting
+		return false
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// TruncateToCurrentBranch removes undone mutation commands from the log while preserving
+// all navigation commands. This implements the branch-aware behavior.
+func (l *Logger) TruncateToCurrentBranch(refArg ...Ref) error {
+	if l.err != nil {
+		return fmt.Errorf("logger is not healthy: %w", l.err)
+	}
+
+	ref := l.resolveRef(refArg...)
+
+	// Read all lines and filter out undone mutation commands for the target ref
+	var filteredLines []string
+	err := l.ProcessLogFile(func(line string) bool {
+		// Skip empty lines
+		if strings.TrimSpace(line) == "" {
+			return true
+		}
+
+		// Parse the log line into an Entry
+		entry, err := ParseLogLine(line)
+		if err != nil {
+			// Keep malformed lines as-is for safety
+			filteredLines = append(filteredLines, line)
+			return true
+		}
+
+		// Always preserve navigation commands
+		if entry.IsNavigation {
+			filteredLines = append(filteredLines, line)
+			return true
+		}
+
+		// If this entry doesn't match our target ref, keep it
+		if !l.matchRef(entry.Ref, ref) {
+			filteredLines = append(filteredLines, line)
+			return true
+		}
+
+		// For entries matching our ref: keep only non-undone mutation commands
+		if !entry.Undoed {
+			filteredLines = append(filteredLines, line)
+		}
+		// Skip undone mutation commands (they get truncated)
+
+		return true
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Write the filtered lines back to the log file
+	return l.rewriteLogFile(filteredLines)
+}
+
+// rewriteLogFile completely rewrites the log file with the provided lines.
+func (l *Logger) rewriteLogFile(lines []string) error {
+	tmpFile := l.logFile + ".tmp"
+
+	// Create a temp file
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("cannot create temporary log file: %w", err)
+	}
+	defer out.Close()
+
+	// Write all lines to the temp file
+	for _, line := range lines {
+		if _, err := out.WriteString(line + "\n"); err != nil {
+			return fmt.Errorf("failed to write log line: %w", err)
+		}
+	}
+
+	// Replace the original file
+	if err := os.Rename(tmpFile, l.logFile); err != nil {
+		return fmt.Errorf("failed to rename temporary log file: %w", err)
+	}
+
+	return nil
 }
 
 // Dump reads the log file content and writes it directly to the provided writer.
@@ -618,10 +943,10 @@ func (l *Logger) matchRef(lineRef, targetRef Ref) bool {
 	return lineRef == targetRef
 }
 
-// processLogFile reads the log file line by line and calls the processor function for each line.
+// ProcessLogFile reads the log file line by line and calls the processor function for each line.
 // This is more efficient than reading the entire file at once, especially when only
 // the first few lines are needed.
-func (l *Logger) processLogFile(processor lineProcessor) error {
+func (l *Logger) ProcessLogFile(processor func(line string) bool) error {
 	if l.err != nil {
 		return fmt.Errorf("logger is not healthy: %w", l.err)
 	}
@@ -682,13 +1007,23 @@ func (l *Logger) getFile() (*os.File, error) {
 	return os.OpenFile(l.logFile, os.O_RDONLY, 0600)
 }
 
-// parseLogLine parses a log line into an Entry.
-// Format: {"d":"2025-05-16 11:02:55","ref":"main","cmd":"git commit -m 'test'"}.
-func parseLogLine(line string) (*Entry, error) {
+// ParseLogLine parses a log line into an Entry.
+func ParseLogLine(line string) (*Entry, error) {
 	var entry Entry
 	if err := entry.UnmarshalText([]byte(line)); err != nil {
 		return nil, fmt.Errorf("invalid log line format: %s", line)
 	}
 
 	return &entry, nil
+}
+
+// ShouldBeLogged returns true if the command should be logged.
+func ShouldBeLogged(gitCmd *githelpers.GitCommand) bool {
+	// Internal commands (git undo and git back) should never be logged
+	if gitCmd.Name == githelpers.CustomCommandBack || gitCmd.Name == githelpers.CustomCommandUndo {
+		return false
+	}
+
+	// Mutating and navigating commands are logged
+	return gitCmd.BehaviorType == githelpers.Mutating || gitCmd.BehaviorType == githelpers.Navigating
 }

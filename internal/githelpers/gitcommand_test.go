@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/amberpixels/git-undo/internal/git-undo/logging"
 	"github.com/amberpixels/git-undo/internal/githelpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -575,7 +576,7 @@ func TestParseGitCommand_Undo(t *testing.T) {
 			name:    "undo with other args is valid and not read-only",
 			command: "git undo --some-arg value",
 			want: &githelpers.GitCommand{
-				Name:         "undo",
+				Name:         githelpers.CustomCommandUndo,
 				Args:         []string{"--some-arg", "value"},
 				Supported:    true,
 				Type:         githelpers.Custom,
@@ -822,17 +823,27 @@ func TestBehaviorTypeClassification(t *testing.T) {
 				assert.True(t, gitCmd.IsMutating(), "Command should be mutating")
 				assert.False(t, gitCmd.IsReadOnly(), "Command should not be read-only")
 				assert.False(t, gitCmd.IsNavigating(), "Command should not be navigating")
-				assert.True(t, gitCmd.ShouldBeLogged(), "Command should be logged")
+				// Internal commands (undo/back) should not be logged even if they are mutating
+				if gitCmd.Name == githelpers.CustomCommandUndo || gitCmd.Name == githelpers.CustomCommandBack {
+					assert.False(t, logging.ShouldBeLogged(gitCmd), "Internal command should not be logged")
+				} else {
+					assert.True(t, logging.ShouldBeLogged(gitCmd), "Command should be logged")
+				}
 			case githelpers.Navigating:
 				assert.False(t, gitCmd.IsMutating(), "Command should not be mutating")
 				assert.False(t, gitCmd.IsReadOnly(), "Command should not be read-only")
 				assert.True(t, gitCmd.IsNavigating(), "Command should be navigating")
-				assert.True(t, gitCmd.ShouldBeLogged(), "Command should be logged")
+				// Internal commands (undo/back) should not be logged even if they are navigating
+				if gitCmd.Name == githelpers.CustomCommandUndo || gitCmd.Name == githelpers.CustomCommandBack {
+					assert.False(t, logging.ShouldBeLogged(gitCmd), "Internal command should not be logged")
+				} else {
+					assert.True(t, logging.ShouldBeLogged(gitCmd), "Command should be logged")
+				}
 			case githelpers.ReadOnly:
 				assert.False(t, gitCmd.IsMutating(), "Command should not be mutating")
 				assert.True(t, gitCmd.IsReadOnly(), "Command should be read-only")
 				assert.False(t, gitCmd.IsNavigating(), "Command should not be navigating")
-				assert.False(t, gitCmd.ShouldBeLogged(), "Command should not be logged")
+				assert.False(t, logging.ShouldBeLogged(gitCmd), "Command should not be logged")
 			case githelpers.UnknownBehavior:
 				fallthrough
 			default:

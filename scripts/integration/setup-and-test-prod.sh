@@ -17,4 +17,4 @@ source ~/.bashrc
 # Note: Git-undo hooks will be sourced within each BATS test's setup() function
 
 echo "Running integration tests..."
-bats integration-test.bats # --filter "3A:" # <- uncomment to run a specific test
+bats ./*.bats --show-output-of-passing-tests #--filter "0A:"

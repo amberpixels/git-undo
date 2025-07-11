@@ -86,6 +86,7 @@ func TestLogger_E2E(t *testing.T) {
 	SwitchRef(mgc, "feature/test")
 	entry, err := lgr.GetLastRegularEntry()
 	require.NoError(t, err)
+	require.NotNil(t, entry)
 	assert.Equal(t, commands[4].cmd, entry.Command)
 	assert.Equal(t, "feature/test", entry.Ref.String())
 
@@ -115,7 +116,7 @@ func TestLogger_E2E(t *testing.T) {
 
 	// 7. Test entry parsing
 	t.Log("Testing entry parsing...")
-	parsedEntry, err := logging.ParseLogLine(mainEntry.GetIdentifier())
+	parsedEntry, err := logging.ParseLogLine(mainEntry.String())
 	require.NoError(t, err)
 	assert.Equal(t, mainEntry.Command, parsedEntry.Command)
 	assert.Equal(t, mainEntry.Ref, parsedEntry.Ref)
@@ -549,4 +550,323 @@ func TestGitBackFindAnyCheckout(t *testing.T) {
 	assert.True(t, entry3.Undoed) // Should be marked as undoed
 
 	t.Log("✅ git-back can successfully find checkout commands for toggle behavior")
+}
+
+// TestBranchTruncation tests the branch-aware log truncation functionality.
+func TestBranchTruncation(t *testing.T) {
+	t.Log("Testing branch truncation logic when logging after undos")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Set up the scenario: A → B → C → undo → undo → F
+	// Log commands A, B, C
+	err := lgr.LogCommand("git add fileA.txt")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git commit -m 'B'")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add fileC.txt")
+	require.NoError(t, err)
+
+	// Get and undo C
+	entryC, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	require.NotNil(t, entryC)
+	assert.Equal(t, "git add fileC.txt", entryC.Command)
+	err = lgr.ToggleEntry(entryC.GetIdentifier())
+	require.NoError(t, err)
+
+	// Get and undo B
+	entryB, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	require.NotNil(t, entryB)
+	assert.Equal(t, "git commit -m 'B'", entryB.Command)
+	err = lgr.ToggleEntry(entryB.GetIdentifier())
+	require.NoError(t, err)
+
+	// Check that we have 2 consecutive undone commands
+	count, err := lgr.CountConsecutiveUndoneCommands()
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+
+	// Now log command F - this should trigger branch truncation
+	err = lgr.LogCommand("git add fileF.txt")
+	require.NoError(t, err)
+
+	// After truncation, the log should contain only F and A
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.String()
+	t.Logf("Log content after truncation:\n%s", content)
+
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		lines = []string{}
+	}
+
+	assert.Len(t, lines, 2, "After branching, should have 2 entries (F and A)")
+
+	// Verify the entries are correct
+	entryF, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	require.NotNil(t, entryF)
+	assert.Equal(t, "git add fileF.txt", entryF.Command)
+
+	t.Log("✅ Branch truncation working correctly")
+}
+
+// TestNavigationPrefixing tests that navigation commands are prefixed with N.
+func TestNavigationPrefixing(t *testing.T) {
+	t.Log("Testing navigation command prefixing with N")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Log a navigation command
+	err := lgr.LogCommand("git checkout feature")
+	require.NoError(t, err)
+
+	// Log a mutation command
+	err = lgr.LogCommand("git add file.txt")
+	require.NoError(t, err)
+
+	// Check the raw log content
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.String()
+	t.Logf("Log content:\n%s", content)
+
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	require.Len(t, lines, 2)
+
+	// First line should be mutation command (+M prefix)
+	assert.Contains(t, lines[0], "+M ")
+	assert.Contains(t, lines[0], "git add file.txt")
+
+	// Second line should be navigation command (+N prefix)
+	assert.Contains(t, lines[1], "+N ")
+	assert.Contains(t, lines[1], "git checkout feature")
+
+	t.Log("✅ Navigation command prefixing working correctly")
+}
+
+// TestOldFormatMigration tests that old format files are truncated during migration.
+func TestOldFormatMigration(t *testing.T) {
+	t.Log("Testing old format migration (truncation)")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+
+	// Manually create a log with old format (no +/- M/N prefixes)
+	logPath := tmpDir + "/.git/git-undo/commands"
+	err := os.MkdirAll(tmpDir+"/.git/git-undo", 0755)
+	require.NoError(t, err)
+
+	oldFormatContent := `2025-06-25 10:00:00|main|git add old-file.txt
+N 2025-06-25 09:59:00|main|git checkout old-branch
+2025-06-25 09:58:00|main|git commit -m 'old commit'`
+
+	err = os.WriteFile(logPath, []byte(oldFormatContent), 0600)
+	require.NoError(t, err)
+
+	// Create logger - this should trigger migration (truncation)
+	lgr := logging.NewLogger(tmpDir+"/.git", mgc)
+	require.NotNil(t, lgr)
+
+	// Check that the file was truncated (should be empty)
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.String()
+	assert.Empty(t, strings.TrimSpace(content), "Old format file should be truncated")
+
+	// Now log new commands which should use new format
+	err = lgr.LogCommand("git checkout new-branch")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add new-file.txt")
+	require.NoError(t, err)
+
+	// Check log content has new format
+	buffer.Reset()
+	require.NoError(t, lgr.Dump(&buffer))
+	content = buffer.String()
+	t.Logf("Log content after migration:\n%s", content)
+
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	require.Len(t, lines, 2)
+	assert.Contains(t, lines[0], "+M ", "Should use new format +M")
+	assert.Contains(t, lines[1], "+N ", "Should use new format +N")
+
+	t.Log("✅ Old format migration working correctly")
+}
+
+// TestNavigationCommandSeparation tests that git-undo and git-back handle commands separately.
+func TestNavigationCommandSeparation(t *testing.T) {
+	t.Log("Testing navigation command separation for git-undo vs git-back")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Log a mix of navigation and mutation commands
+	err := lgr.LogCommand("git checkout feature")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add file1.txt")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git switch main")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git commit -m 'test'")
+	require.NoError(t, err)
+
+	// git-undo should get the last mutation command (commit)
+	undoEntry, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	require.NotNil(t, undoEntry)
+	assert.Equal(t, "git commit -m 'test'", undoEntry.Command)
+
+	// git-back should get the last navigation command (switch)
+	backEntry, err := lgr.GetLastCheckoutSwitchEntry()
+	require.NoError(t, err)
+	require.NotNil(t, backEntry)
+	assert.Equal(t, "git switch main", backEntry.Command)
+
+	t.Log("✅ Navigation command separation working correctly")
+}
+
+// TestTruncateToCurrentBranchPreservesNavigation tests that truncation preserves navigation commands.
+func TestTruncateToCurrentBranchPreservesNavigation(t *testing.T) {
+	t.Log("Testing that branch truncation preserves all navigation commands")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Create a complex scenario with mixed navigation and mutation commands
+	err := lgr.LogCommand("git checkout feature") // N prefixed
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add fileA.txt") // mutation
+	require.NoError(t, err)
+	err = lgr.LogCommand("git switch main") // N prefixed
+	require.NoError(t, err)
+	err = lgr.LogCommand("git commit -m 'B'") // mutation
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add fileC.txt") // mutation
+	require.NoError(t, err)
+
+	// Undo the last two mutation commands
+	entryC, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	err = lgr.ToggleEntry(entryC.GetIdentifier())
+	require.NoError(t, err)
+
+	entryB, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	err = lgr.ToggleEntry(entryB.GetIdentifier())
+	require.NoError(t, err)
+
+	// Manually call truncation
+	err = lgr.TruncateToCurrentBranch()
+	require.NoError(t, err)
+
+	// Check that navigation commands are preserved
+	var buffer bytes.Buffer
+	require.NoError(t, lgr.Dump(&buffer))
+	content := buffer.String()
+	t.Logf("Log content after truncation:\n%s", content)
+
+	// Should have both navigation commands plus the remaining mutation command
+	navEntry1, err := lgr.GetLastCheckoutSwitchEntry()
+	require.NoError(t, err)
+	require.NotNil(t, navEntry1)
+	assert.Equal(t, "git switch main", navEntry1.Command)
+
+	// Verify navigation history is intact for git-back
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	navigationLines := 0
+	for _, line := range lines {
+		if strings.Contains(line, "+N ") || strings.Contains(line, "-N ") {
+			navigationLines++
+		}
+	}
+	assert.Equal(t, 2, navigationLines, "Should preserve both navigation commands")
+
+	t.Log("✅ Branch truncation preserves navigation commands correctly")
+}
+
+// TestGetLastUndoedEntry tests the GetLastUndoedEntry method for redo functionality.
+func TestGetLastUndoedEntry(t *testing.T) {
+	t.Log("Testing GetLastUndoedEntry method for redo functionality")
+
+	mgc := NewMockGitHelper()
+	SwitchRef(mgc, "main")
+
+	tmpDir := t.TempDir()
+	lgr := logging.NewLogger(tmpDir, mgc)
+	require.NotNil(t, lgr)
+
+	// Log commands A, B, C
+	err := lgr.LogCommand("git add fileA.txt")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add fileB.txt")
+	require.NoError(t, err)
+	err = lgr.LogCommand("git add fileC.txt")
+	require.NoError(t, err)
+
+	// Initially, no undoed entries
+	undoedEntry, err := lgr.GetLastUndoedEntry()
+	require.NoError(t, err)
+	assert.Nil(t, undoedEntry)
+
+	// Get and undo C
+	entryC, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	err = lgr.ToggleEntry(entryC.GetIdentifier())
+	require.NoError(t, err)
+
+	// Now should find C as last undoed entry
+	undoedEntry, err = lgr.GetLastUndoedEntry()
+	require.NoError(t, err)
+	require.NotNil(t, undoedEntry)
+	assert.Equal(t, "git add fileC.txt", undoedEntry.Command)
+	assert.True(t, undoedEntry.Undoed)
+
+	// Get and undo B
+	entryB, err := lgr.GetLastRegularEntry()
+	require.NoError(t, err)
+	err = lgr.ToggleEntry(entryB.GetIdentifier())
+	require.NoError(t, err)
+
+	// Now should still find C as last undoed entry (C is at top of log)
+	undoedEntry, err = lgr.GetLastUndoedEntry()
+	require.NoError(t, err)
+	require.NotNil(t, undoedEntry)
+	assert.Equal(t, "git add fileC.txt", undoedEntry.Command)
+	assert.True(t, undoedEntry.Undoed)
+
+	// Test with navigation commands - should skip them
+	err = lgr.LogCommand("git checkout feature")
+	require.NoError(t, err)
+
+	// Should still find C as last undoed entry (ignoring navigation commands)
+	undoedEntry, err = lgr.GetLastUndoedEntry()
+	require.NoError(t, err)
+	require.NotNil(t, undoedEntry)
+	assert.Equal(t, "git add fileC.txt", undoedEntry.Command)
+
+	t.Log("✅ GetLastUndoedEntry working correctly for redo functionality")
 }
