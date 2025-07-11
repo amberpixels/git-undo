@@ -41,7 +41,8 @@ RUN mkdir -p test_helper && \
     git clone https://github.com/bats-core/bats-assert test_helper/bats-assert
 
 # Copy integration test files
-COPY --chown=testuser:testuser scripts/integration/integration-test.bats /home/testuser/
+COPY --chown=testuser:testuser scripts/integration/*.bats /home/testuser/
+COPY --chown=testuser:testuser scripts/integration/test_helpers.bash /home/testuser/
 COPY --chown=testuser:testuser scripts/integration/setup-and-test-prod.sh /home/testuser/setup-and-test.sh
 
 # Make the setup script executable
@@ -51,4 +52,4 @@ RUN chmod +x /home/testuser/setup-and-test.sh
 WORKDIR /home/testuser
 
 # Run setup and integration test
-CMD ["./setup-and-test.sh"] 
+CMD ["./setup-and-test.sh"]

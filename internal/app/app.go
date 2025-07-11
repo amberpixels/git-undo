@@ -159,7 +159,7 @@ func (a *App) runRedo(_ context.Context, lgr *logging.Logger, g GitHelper, opts 
 	}
 	if lastEntry == nil {
 		// nothing to redo
-		a.logDebugf(opts.Verbose, "runRedo: no undoed entry found")
+		a.logInfof("nothing to redo")
 		return nil
 	}
 
@@ -196,7 +196,7 @@ func (a *App) runBack(ctx context.Context, lgr *logging.Logger, g GitHelper, opt
 		return fmt.Errorf("failed to get last command: %w", err)
 	}
 	if lastEntry == nil {
-		a.logDebugf(opts.Verbose, "no commands found")
+		a.logInfof("no commands found")
 		return nil
 	}
 
@@ -208,7 +208,7 @@ func (a *App) runBack(ctx context.Context, lgr *logging.Logger, g GitHelper, opt
 			return fmt.Errorf("failed to get last checkout/switch command: %w", err)
 		}
 		if lastEntry == nil {
-			a.logDebugf(opts.Verbose, "no checkout/switch commands to undo")
+			a.logInfof("no checkout/switch commands to undo")
 			return nil
 		}
 	}
@@ -218,25 +218,25 @@ func (a *App) runBack(ctx context.Context, lgr *logging.Logger, g GitHelper, opt
 
 // runUndo handles git-undo operations (mutation undo).
 func (a *App) runUndo(ctx context.Context, lgr *logging.Logger, g GitHelper, opts RunOptions) error {
-	// For git-undo, get any regular entry
+	// First, check if the chronologically last command was a checkout/switch command
+	absoluteLastEntry, err := lgr.GetLastEntry()
+	if err != nil {
+		return fmt.Errorf("failed to get last command: %w", err)
+	}
+
+	if absoluteLastEntry != nil && a.isCheckoutOrSwitchCommand(absoluteLastEntry.Command) {
+		a.logInfof("Last operation can't be undone. Use %sgit back%s instead.", yellowColor, resetColor)
+		return nil
+	}
+
+	// For git-undo, get the last regular (mutation) entry to undo
 	lastEntry, err := lgr.GetLastRegularEntry()
 	if err != nil {
 		return fmt.Errorf("failed to get last git command: %w", err)
 	}
 
 	if lastEntry == nil {
-		// No regular entries found, check if there are undoed entries to redo
-		lastUndoedEntry, err := lgr.GetLastUndoedEntry()
-		if err != nil {
-			return fmt.Errorf("failed to get last undoed command: %w", err)
-		}
-		if lastUndoedEntry != nil {
-			// Auto-redo behavior: if no regular entries but undoed entries exist, redo the last undoed entry
-			a.logDebugf(opts.Verbose, "Auto-redo triggered: redoing %s (no regular entries)", lastUndoedEntry.Command)
-			return a.runRedo(ctx, lgr, g, opts)
-		}
-
-		// Check if the last command was a navigation command (which would be N prefixed)
+		// Check if there are any navigation commands if no mutation commands exist
 		lastNavEntry, err := lgr.GetLastCheckoutSwitchEntry()
 		if err != nil {
 			return fmt.Errorf("failed to get last checkout/switch command: %w", err)
@@ -245,11 +245,11 @@ func (a *App) runUndo(ctx context.Context, lgr *logging.Logger, g GitHelper, opt
 			a.logInfof("Last operation can't be undone. Use %sgit back%s instead.", yellowColor, resetColor)
 			return nil
 		}
-		a.logDebugf(opts.Verbose, "nothing to undo")
+		a.logInfof("nothing to undo")
 		return nil
 	}
 
-	// Check if the last command was checkout or switch - suggest git back instead
+	// Check if the last regular command was checkout or switch - suggest git back instead
 	if a.isCheckoutOrSwitchCommand(lastEntry.Command) {
 		a.logInfof("Last operation can't be undone. Use %sgit back%s instead.", yellowColor, resetColor)
 		return nil

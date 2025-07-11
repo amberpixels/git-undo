@@ -23,4 +23,4 @@ cd /home/testuser
 echo " Running integration tests..."
 echo "================================================================================"
 echo ""
-bats integration-test.bats --filter "6A:" # <- uncomment to run a specific test
+bats ./*.bats --show-output-of-passing-tests #--filter "6__"
