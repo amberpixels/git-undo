@@ -70,8 +70,8 @@ func NewAppGitBack(version, versionSource string) *App {
 }
 
 // HandleVersion handles the --version flag by delegating to SelfController.
-func (a *App) HandleVersion(verbose bool) error {
-	selfCtrl := NewSelfController(a.version, a.versionSource, verbose, a.getAppName())
+func (a *App) HandleVersion(ctx context.Context, verbose bool) error {
+	selfCtrl := NewSelfController(ctx, a.version, a.versionSource, verbose, a.getAppName())
 	return selfCtrl.cmdVersion()
 }
 
@@ -94,7 +94,7 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 		}
 	}()
 
-	selfCtrl := NewSelfController(a.version, a.versionSource, opts.Verbose, a.getAppName()).
+	selfCtrl := NewSelfController(ctx, a.version, a.versionSource, opts.Verbose, a.getAppName()).
 		AddScript(CommandUpdate, gitundoembeds.GetUpdateScript()).
 		AddScript(CommandUninstall, gitundoembeds.GetUninstallScript())
 
@@ -104,7 +104,7 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 
-	g := githelpers.NewGitHelper(a.dir)
+	g := githelpers.NewGitHelper(ctx, a.dir)
 
 	gitDir, err := g.GetRepoGitDir()
 	if err != nil {

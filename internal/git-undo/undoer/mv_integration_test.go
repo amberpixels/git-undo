@@ -1,6 +1,7 @@
 package undoer_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,7 +84,7 @@ func TestMvUndoer_Integration_MultipleFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create the real GitExec (not mock)
-	realGitExec := githelpers.NewGitHelper(tmpDir)
+	realGitExec := githelpers.NewGitHelper(context.Background(), tmpDir)
 	mvUndoer := undoer.NewMvUndoerForTest(realGitExec, cmdDetails)
 
 	// Get the undo commands (should be multiple for multi-file mv)

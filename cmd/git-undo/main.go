@@ -36,7 +36,7 @@ func main() {
 		Action: func(ctx context.Context, c *cli.Command) error {
 			application := app.NewAppGitUndo(version, versionSource)
 			if c.Bool("version") {
-				return application.HandleVersion(c.Bool("verbose"))
+				return application.HandleVersion(ctx, c.Bool("verbose"))
 			}
 
 			// Use the new structured approach with parsed options

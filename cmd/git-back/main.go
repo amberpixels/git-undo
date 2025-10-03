@@ -35,7 +35,7 @@ func main() {
 			a := app.NewAppGitBack(version, versionSource)
 
 			if c.Bool("version") {
-				return a.HandleVersion(c.Bool("verbose"))
+				return a.HandleVersion(ctx, c.Bool("verbose"))
 			}
 
 			return a.Run(ctx, app.RunOptions{

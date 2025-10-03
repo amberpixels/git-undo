@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -34,18 +35,25 @@ type SelfController struct {
 	versionSource string
 	verbose       bool
 	appName       string
+	ctx           context.Context
 
 	// scripts is a map of self-management commands to their scripts.
 	scripts map[string]string
 }
 
 // NewSelfController creates a new SelfController instance.
-func NewSelfController(version, versionSource string, verbose bool, appName string) *SelfController {
+func NewSelfController(
+	ctx context.Context,
+	version, versionSource string,
+	verbose bool,
+	appName string,
+) *SelfController {
 	return &SelfController{
 		version:       version,
 		versionSource: versionSource,
 		verbose:       verbose,
 		appName:       appName,
+		ctx:           ctx,
 		scripts:       map[string]string{},
 	}
 }
@@ -217,7 +225,7 @@ func (sc *SelfController) runEmbeddedScript(script, name string) error {
 
 	// Execute script
 	//nolint:gosec // TODO: fix me in future
-	cmd := exec.Command("bash", tmpFile.Name())
+	cmd := exec.CommandContext(sc.ctx, "bash", tmpFile.Name())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

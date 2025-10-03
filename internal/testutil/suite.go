@@ -83,7 +83,7 @@ func (s *GitTestSuite) RunCmdWithEnv(extraEnv []string, cmd string, args ...stri
 		fmt.Printf("# %s %s %s\n", cmd, strings.Join(args, " "), envStr)
 	}
 
-	c := exec.Command(cmd, args...)
+	c := exec.CommandContext(context.Background(), cmd, args...)
 	c.Dir = s.repoDir
 	if extraEnv != nil {
 		c.Env = append(os.Environ(), extraEnv...)

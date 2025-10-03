@@ -1,6 +1,7 @@
 package githelpers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -12,13 +13,14 @@ import (
 // It holds repoDir where commands are executed.
 type H struct {
 	repoDir string
+	ctx     context.Context
 }
 
 const invalidRepoDir = "<invalid repo dir>"
 
 // NewGitHelper creates a new GitHelper instance.
-func NewGitHelper(repoDirArg ...string) *H {
-	h := &H{}
+func NewGitHelper(ctx context.Context, repoDirArg ...string) *H {
+	h := &H{ctx: ctx}
 
 	if len(repoDirArg) > 0 {
 		h.repoDir = repoDirArg[0]
@@ -39,7 +41,7 @@ func (h *H) execGitOutput(subCmd string, args ...string) (string, error) {
 	}
 
 	gitArgs := append([]string{subCmd}, args...)
-	cmd := exec.Command("git", gitArgs...)
+	cmd := exec.CommandContext(h.ctx, "git", gitArgs...)
 	cmd.Dir = h.repoDir
 
 	output, err := cmd.Output()
@@ -57,7 +59,7 @@ func (h *H) execGitRun(subCmd string, args ...string) error {
 	}
 
 	gitArgs := append([]string{subCmd}, args...)
-	cmd := exec.Command("git", gitArgs...)
+	cmd := exec.CommandContext(h.ctx, "git", gitArgs...)
 	cmd.Dir = h.repoDir
 
 	return cmd.Run()
