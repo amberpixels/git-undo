@@ -1,4 +1,4 @@
-# *git undo* 🥐 — a Git plugin that enables Ctrl+Z functionality 💫
+# *git undo* 🥐 — Ctrl+Z as Git plugin 💫
 
 <p align="center">
   <img src="logo.png" alt="Logo" width="300"/><br>
