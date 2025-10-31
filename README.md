@@ -22,7 +22,7 @@ git back # back to main
 git back # back to feature-branch
 ```
 
-## 3. `git undo undo` Undoed accidently? Undo it as well. (like Ctrl+Shift+Z)
+## 3. Did `git undo` accidently? Not a problem: undo it as well. (like Ctrl+Shift+Z)
 
 ```bash
 git add .
