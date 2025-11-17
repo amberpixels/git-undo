@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.4.1
+	github.com/urfave/cli/v3 v3.6.1
 )
 
 require (
