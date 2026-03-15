@@ -38,3 +38,4 @@ go.work.sum
 .idea
 
 /build
+.desloppify/
