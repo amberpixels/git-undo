@@ -28,6 +28,7 @@ func TestRevertUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitOutput", "rev-parse", "HEAD~1").Return("abc123", nil)
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("", nil)
+				m.On("GitOutput", "ls-files", "--others", "--exclude-standard").Return("", nil)
 			},
 			expectedCmd:  "git reset --hard abc123",
 			expectedDesc: "Remove revert commit def456",

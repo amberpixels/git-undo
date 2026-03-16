@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+var _ Undoer = &BackUndoer{}
+
 // BackUndoer handles undoing git checkout and git switch operations by returning to the previous branch.
 type BackUndoer struct {
 	git GitExec
@@ -47,32 +49,7 @@ func (b *BackUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	prevBranch = strings.TrimPrefix(prevBranch, "refs/heads/")
 	_ = prevBranch // TODO: fixme.. do we need prevBranch at all?
 
-	// Check working directory status to detect potential conflicts
-	var warnings []string
-
-	// Check for staged changes
-	stagedOutput, err := b.git.GitOutput("diff", "--cached", "--name-only")
-	if err == nil && strings.TrimSpace(stagedOutput) != "" {
-		warnings = append(warnings, "You have staged changes that may conflict with branch switching")
-	}
-
-	// Check for unstaged changes
-	unstagedOutput, err := b.git.GitOutput("diff", "--name-only")
-	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
-		warnings = append(warnings, "You have unstaged changes that may conflict with branch switching")
-	}
-
-	// Check for untracked files (these usually don't conflict, but worth mentioning)
-	untrackedOutput, err := b.git.GitOutput("ls-files", "--others", "--exclude-standard")
-	if err == nil && strings.TrimSpace(untrackedOutput) != "" {
-		warnings = append(warnings, "You have untracked files (these usually don't conflict)")
-	}
-
-	// Add helpful suggestions if there are potential conflicts
-	if len(warnings) > 0 {
-		warnings = append(warnings, "If git-back fails, try: 'git stash' first, then 'git-back', then 'git stash pop'")
-		warnings = append(warnings, "Or commit your changes first with 'git commit -m \"WIP\"'")
-	}
+	warnings := collectWorkingDirWarnings(b.git, "branch switching", "git-back")
 
 	// Use "git checkout -" to go back to the previous branch/commit
 	return []*UndoCommand{NewUndoCommand(b.git,

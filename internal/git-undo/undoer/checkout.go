@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+var _ Undoer = &CheckoutUndoer{}
+
 // CheckoutUndoer handles undoing git checkout operations.
 type CheckoutUndoer struct {
 	git GitExec

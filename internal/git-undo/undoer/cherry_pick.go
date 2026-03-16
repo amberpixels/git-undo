@@ -90,20 +90,7 @@ func (c *CherryPickUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	}
 	parentCommit = strings.TrimSpace(parentCommit)
 
-	// Check if there are any uncommitted changes that would be preserved
-	var warnings []string
-
-	// Check for staged changes
-	stagedOutput, err := c.git.GitOutput("diff", "--cached", "--name-only")
-	if err == nil && strings.TrimSpace(stagedOutput) != "" {
-		warnings = append(warnings, "Warning: This will discard staged changes")
-	}
-
-	// Check for unstaged changes
-	unstagedOutput, err := c.git.GitOutput("diff", "--name-only")
-	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
-		warnings = append(warnings, "Warning: This will discard unstaged changes")
-	}
+	warnings := collectWorkingDirWarnings(c.git, "cherry-pick undo", "cherry-pick undo")
 
 	// Use hard reset to completely remove the cherry-picked changes
 	undoCommand := fmt.Sprintf("git reset --hard %s", parentCommit)

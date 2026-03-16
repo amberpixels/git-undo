@@ -29,6 +29,7 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitOutput", "rev-parse", "HEAD~1").Return("xyz789", nil)
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("", nil)
+				m.On("GitOutput", "ls-files", "--others", "--exclude-standard").Return("", nil)
 			},
 			expectedCmd:  "git reset --hard xyz789",
 			expectedDesc: "Remove cherry-pick commit def456",
@@ -63,6 +64,7 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitOutput", "rev-parse", "HEAD~1").Return("xyz789", nil)
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("", nil)
+				m.On("GitOutput", "ls-files", "--others", "--exclude-standard").Return("", nil)
 			},
 			expectedCmd:  "git reset --hard xyz789",
 			expectedDesc: "Remove cherry-pick commit def456",
@@ -79,6 +81,7 @@ func TestCherryPickUndoer_GetUndoCommand(t *testing.T) {
 				m.On("GitOutput", "rev-parse", "HEAD~1").Return("xyz789", nil)
 				m.On("GitOutput", "diff", "--cached", "--name-only").Return("", nil)
 				m.On("GitOutput", "diff", "--name-only").Return("", nil)
+				m.On("GitOutput", "ls-files", "--others", "--exclude-standard").Return("", nil)
 			},
 			expectedCmd:  "git reset --hard xyz789",
 			expectedDesc: "Remove cherry-pick commit def456",

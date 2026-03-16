@@ -55,32 +55,7 @@ func (s *SwitchUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	// Remove the refs/heads/ prefix if present to get just the branch name
 	prevBranch = strings.TrimPrefix(prevBranch, "refs/heads/")
 
-	// Check working directory status to detect potential conflicts
-	var warnings []string
-
-	// Check for staged changes
-	stagedOutput, err := s.git.GitOutput("diff", "--cached", "--name-only")
-	if err == nil && strings.TrimSpace(stagedOutput) != "" {
-		warnings = append(warnings, "You have staged changes that may conflict with branch switching")
-	}
-
-	// Check for unstaged changes
-	unstagedOutput, err := s.git.GitOutput("diff", "--name-only")
-	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
-		warnings = append(warnings, "You have unstaged changes that may conflict with branch switching")
-	}
-
-	// Check for untracked files
-	untrackedOutput, err := s.git.GitOutput("ls-files", "--others", "--exclude-standard")
-	if err == nil && strings.TrimSpace(untrackedOutput) != "" {
-		warnings = append(warnings, "You have untracked files (these usually don't conflict)")
-	}
-
-	// Add helpful suggestions if there are potential conflicts
-	if len(warnings) > 0 {
-		warnings = append(warnings, "If switch undo fails, try: 'git stash' first, then undo, then 'git stash pop'")
-		warnings = append(warnings, "Or commit your changes first with 'git commit -m \"WIP\"'")
-	}
+	warnings := collectWorkingDirWarnings(s.git, "branch switching", "switch undo")
 
 	// Use "git switch -" to go back to the previous branch
 	// git switch supports the same "-" syntax as git checkout

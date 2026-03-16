@@ -1,7 +1,6 @@
 package undoer_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/amberpixels/git-undo/internal/git-undo/undoer"
@@ -27,20 +26,16 @@ func TestCleanUndoer_GetUndoCommand(t *testing.T) {
 			errorContains: "dry-run clean operations don't modify files",
 		},
 		{
-			name:    "clean with force",
-			command: "git clean -f",
-			setupMock: func(m *MockGitExec) {
-				m.On("GitOutput", "ls", "-la", ".git/git-undo/clean-backups").Return("", errors.New("no backups"))
-			},
+			name:          "clean with force",
+			command:       "git clean -f",
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "permanently removes untracked files that cannot be recovered",
 		},
 		{
-			name:    "clean directories",
-			command: "git clean -fd",
-			setupMock: func(m *MockGitExec) {
-				m.On("GitOutput", "ls", "-la", ".git/git-undo/clean-backups").Return("", errors.New("no backups"))
-			},
+			name:          "clean directories",
+			command:       "git clean -fd",
+			setupMock:     func(_ *MockGitExec) {},
 			expectError:   true,
 			errorContains: "permanently removes untracked files that cannot be recovered",
 		},

@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+var _ Undoer = &CommitUndoer{}
+
 // CommitUndoer handles undoing git commit operations.
 type CommitUndoer struct {
 	git GitExec

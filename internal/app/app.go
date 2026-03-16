@@ -375,13 +375,12 @@ func (a *App) getAppName() string {
 
 // isCheckoutOrSwitchCommand checks if a command is a git checkout or git switch command.
 func (a *App) isCheckoutOrSwitchCommand(command string) bool {
-	// Parse the command to check its type
 	gitCmd, err := githelpers.ParseGitCommand(command)
 	if err != nil {
 		return false
 	}
 
-	return gitCmd.Name == "checkout" || gitCmd.Name == "switch"
+	return gitCmd.IsCheckoutOrSwitch()
 }
 
 // logDebugf writes debug messages to stderr when verbose mode is enabled.

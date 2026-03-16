@@ -179,9 +179,7 @@ func NewLogger(repoGitDir string, git GitHelper) *Logger {
 
 	// Check if we need to migrate/truncate old format
 	if err := lgr.migrateOldFormatIfNeeded(); err != nil {
-		// If migration fails, we continue but the logger might have issues
-		// TODO: Add verbose logging here (and remove panic)
-		panic("should not happen " + err.Error())
+		return nil
 	}
 
 	return lgr
@@ -379,34 +377,47 @@ func (l *Logger) isGitHookContext() bool {
 	return false
 }
 
-// wasRecentlyLoggedByShellHook checks if this command was recently logged by shell hook.
-func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
-	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+// wasRecentlyLoggedByHook checks if this command was recently logged by the given hook type.
+// hookType should be "shell-hook" or "git-hook".
+func (l *Logger) wasRecentlyLoggedByHook(hookType, cmdIdentifier string) bool {
+	flagFile := filepath.Join(l.logDir, "."+hookType+"-"+cmdIdentifier)
 
-	// Check if flag file exists and is recent (within last 10 seconds)
 	if stat, err := os.Stat(flagFile); err == nil {
-		age := time.Since(stat.ModTime())
-		if age < 10*time.Second {
+		if time.Since(stat.ModTime()) < 10*time.Second {
 			return true
 		}
-		// Clean up old flag file
 		_ = os.Remove(flagFile)
 	}
 
 	return false
 }
 
-// markLoggedByShellHook marks that this command was logged by shell hook.
-func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
-	flagFile := filepath.Join(l.logDir, ".shell-hook-"+cmdIdentifier)
+// markLoggedByHook marks that this command was logged by the given hook type.
+// hookType should be "shell-hook" or "git-hook".
+func (l *Logger) markLoggedByHook(hookType, cmdIdentifier string) {
+	flagFile := filepath.Join(l.logDir, "."+hookType+"-"+cmdIdentifier)
 
-	// Create flag file
 	if file, err := os.Create(flagFile); err == nil {
 		_ = file.Close()
 	}
 
-	// Clean up old flag files in background (best effort)
 	go l.cleanupOldFlagFiles()
+}
+
+func (l *Logger) wasRecentlyLoggedByShellHook(cmdIdentifier string) bool {
+	return l.wasRecentlyLoggedByHook("shell-hook", cmdIdentifier)
+}
+
+func (l *Logger) markLoggedByShellHook(cmdIdentifier string) {
+	l.markLoggedByHook("shell-hook", cmdIdentifier)
+}
+
+func (l *Logger) wasRecentlyLoggedByGitHook(cmdIdentifier string) bool {
+	return l.wasRecentlyLoggedByHook("git-hook", cmdIdentifier)
+}
+
+func (l *Logger) markLoggedByGitHook(cmdIdentifier string) {
+	l.markLoggedByHook("git-hook", cmdIdentifier)
 }
 
 // cleanupOldFlagFiles removes flag files older than 30 seconds.
@@ -429,42 +440,11 @@ func (l *Logger) cleanupOldFlagFiles() {
 	}
 }
 
-// wasRecentlyLoggedByGitHook checks if this command was recently logged by git hook.
-func (l *Logger) wasRecentlyLoggedByGitHook(cmdIdentifier string) bool {
-	flagFile := filepath.Join(l.logDir, ".git-hook-"+cmdIdentifier)
-
-	// Check if flag file exists and is recent (within last 10 seconds)
-	if stat, err := os.Stat(flagFile); err == nil {
-		age := time.Since(stat.ModTime())
-		if age < 10*time.Second {
-			return true
-		}
-		// Clean up old flag file
-		_ = os.Remove(flagFile)
-	}
-
-	return false
-}
-
-// markLoggedByGitHook marks that this command was logged by git hook.
-func (l *Logger) markLoggedByGitHook(cmdIdentifier string) {
-	flagFile := filepath.Join(l.logDir, ".git-hook-"+cmdIdentifier)
-
-	// Create flag file
-	if file, err := os.Create(flagFile); err == nil {
-		_ = file.Close()
-	}
-
-	// Clean up old flag files in background (best effort)
-	go l.cleanupOldFlagFiles()
-}
-
 // GetLogPath returns the path to the log file.
 func (l *Logger) GetLogPath() string { return l.logFile }
 
 // ToggleEntry toggles the undo state of an entry by adding or removing the "#" prefix.
 // The entryIdentifier should be in the format "TIMESTAMP|REF|COMMAND" (without the # prefix).
-// Returns true if the entry was marked as undoed, false if it was unmarked.
 func (l *Logger) ToggleEntry(entryIdentifier string) error {
 	if l.err != nil {
 		return fmt.Errorf("logger is not healthy: %w", l.err)
@@ -707,13 +687,12 @@ func (l *Logger) GetLastCheckoutSwitchEntryForToggle(refArg ...Ref) (*Entry, err
 
 // isCheckoutOrSwitchCommand checks if a command is a git checkout or git switch command.
 func isCheckoutOrSwitchCommand(command string) bool {
-	// Parse the command to check its type
 	gitCmd, err := githelpers.ParseGitCommand(command)
 	if err != nil {
 		return false
 	}
 
-	return gitCmd.Name == "checkout" || gitCmd.Name == "switch"
+	return gitCmd.IsCheckoutOrSwitch()
 }
 
 // IsNavigationCommand checks if a command is a navigation command (checkout, switch, etc.).
@@ -858,9 +837,6 @@ func (l *Logger) Dump(w io.Writer) error {
 
 	file, err := l.getFile()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // nothing to dump (file is empty)
-		}
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 	defer func() { _ = file.Close() }()
@@ -894,16 +870,13 @@ func (l *Logger) prependLogEntry(entry string) error {
 	}
 
 	in, err := l.getFile()
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return err
 	}
-	// if file exists, stream original file into the tmp file
-	if in != nil {
-		// Stream original file into the tmp file
-		if _, err := io.Copy(out, in); err != nil {
-			return fmt.Errorf("failed to copy existing log content: %w", err)
-		}
-		defer func() { _ = in.Close() }()
+	defer func() { _ = in.Close() }()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("failed to copy existing log content: %w", err)
 	}
 
 	// Swap via rename: will remove logFile and make tmpFile our logFile
@@ -951,12 +924,8 @@ func (l *Logger) ProcessLogFile(processor func(line string) bool) error {
 		return fmt.Errorf("logger is not healthy: %w", l.err)
 	}
 
-	// Check if the file exists
 	file, err := l.getFile()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // will log error OR nil if file doesn't exist
-		}
 		return err
 	}
 	defer file.Close()
@@ -985,26 +954,21 @@ func (l *Logger) ProcessLogFile(processor func(line string) bool) error {
 	return nil
 }
 
-// getFile returns the os.File for the log file.
-// It opens it for reading. If file doesn't exist it creates it (but still returns os.ErrNotExist).
-// User is responsible for closing the file.
+// getFile returns the os.File for the log file, opened for reading.
+// If the file doesn't exist, it creates it first.
+// Caller is responsible for closing the file.
 func (l *Logger) getFile() (*os.File, error) {
-	// Check if the file exists
-	_, err := os.Stat(l.logFile)
+	f, err := os.OpenFile(l.logFile, os.O_RDONLY, 0600)
 	if os.IsNotExist(err) {
-		// Create the file if it doesn't exist
-		// TODO: should we stick to os.Create() instead?
 		if err := os.WriteFile(l.logFile, []byte{}, 0600); err != nil {
 			return nil, fmt.Errorf("failed to create log file: %w", err)
 		}
-
-		return nil, err
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to check log file status: %w", err)
+		return os.OpenFile(l.logFile, os.O_RDONLY, 0600)
 	}
-
-	// Open the file for reading or writing
-	return os.OpenFile(l.logFile, os.O_RDONLY, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+	return f, nil
 }
 
 // ParseLogLine parses a log line into an Entry.

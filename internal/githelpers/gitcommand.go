@@ -86,6 +86,11 @@ func (c *GitCommand) IsNavigating() bool {
 	return c.BehaviorType == Navigating
 }
 
+// IsCheckoutOrSwitch returns true if the command is a git checkout or git switch command.
+func (c *GitCommand) IsCheckoutOrSwitch() bool {
+	return c.Name == "checkout" || c.Name == "switch"
+}
+
 // ParseGitCommand parses a git command string into a GitCommand struct.
 func ParseGitCommand(raw string) (*GitCommand, error) {
 	parts, err := shellwords.NewParser().Parse(raw)

@@ -2,6 +2,8 @@ package undoer
 
 import "fmt"
 
+var _ Undoer = &InvalidUndoer{}
+
 // InvalidUndoer represents an undoer for commands that cannot be parsed or are not supported.
 type InvalidUndoer struct {
 	rawCommand string

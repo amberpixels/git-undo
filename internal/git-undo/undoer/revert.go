@@ -70,20 +70,7 @@ func (r *RevertUndoer) GetUndoCommands() ([]*UndoCommand, error) {
 	}
 	parentCommit = strings.TrimSpace(parentCommit)
 
-	// Check if there are any uncommitted changes that would be lost
-	var warnings []string
-
-	// Check for staged changes
-	stagedOutput, err := r.git.GitOutput("diff", "--cached", "--name-only")
-	if err == nil && strings.TrimSpace(stagedOutput) != "" {
-		warnings = append(warnings, "Warning: This will discard staged changes")
-	}
-
-	// Check for unstaged changes
-	unstagedOutput, err := r.git.GitOutput("diff", "--name-only")
-	if err == nil && strings.TrimSpace(unstagedOutput) != "" {
-		warnings = append(warnings, "Warning: This will discard unstaged changes")
-	}
+	warnings := collectWorkingDirWarnings(r.git, "revert undo", "revert undo")
 
 	// Use hard reset to restore both commit state and working directory
 	undoCommand := fmt.Sprintf("git reset --hard %s", parentCommit)

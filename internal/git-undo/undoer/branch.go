@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+var _ Undoer = &BranchUndoer{}
+
 // BranchUndoer handles undoing git branch operations.
 type BranchUndoer struct {
 	git GitExec
